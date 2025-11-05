@@ -11,9 +11,13 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed-admins": "tsx scripts/seed-admins.ts"
+    "db:seed-admins": "tsx scripts/seed-admins.ts",
+    "db:seed-test-data": "tsx scripts/seed-test-data.ts"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
+    "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-slot": "^1.2.4",
     "@types/pg": "^8.15.6",
     "bcryptjs": "^3.0.3",
     "class-variance-authority": "^0.7.1",
@@ -23,10 +27,14 @@
     "drizzle-orm": "^0.44.7",
     "lucide-react": "^0.552.0",
     "next": "16.0.1",
+    "next-themes": "^0.4.6",
     "pg": "^8.16.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
-    "tailwind-merge": "^3.3.1"
+    "react-hook-form": "^7.66.0",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.3.1",
+    "zod": "^4.1.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

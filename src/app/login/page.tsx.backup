@@ -1,0 +1,270 @@
+'use client';
+
+import React, { useState, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { toast } from 'sonner';
+import { z } from 'zod';
+
+const adminLoginSchema = z.object({
+  email: z.string().email('請輸入有效的電子郵件'),
+  password: z.string().min(1, '請輸入密碼'),
+});
+
+const studentLoginSchema = z.object({
+  displayName: z.string().min(1, '請輸入姓名'),
+  studentNo: z.string().min(1, '請輸入學號'),
+  quizId: z.string().uuid('無效的測驗ID'),
+});
+
+type AdminLoginData = z.infer<typeof adminLoginSchema>;
+type StudentLoginData = z.infer<typeof studentLoginSchema>;
+
+type LoginType = 'admin' | 'student';
+
+function LoginForm() {
+  const [loginType, setLoginType] = useState<LoginType>('student');
+  const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const quizId = searchParams.get('quiz') || '';
+
+  const adminForm = useForm<AdminLoginData>({
+    resolver: zodResolver(adminLoginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+    },
+  });
+
+  const studentForm = useForm<StudentLoginData>({
+    resolver: zodResolver(studentLoginSchema),
+    defaultValues: {
+      displayName: '',
+      studentNo: '',
+      quizId: '',
+    },
+  });
+
+  // 設定 quizId 當 searchParams 變化時
+  React.useEffect(() => {
+    if (quizId) {
+      studentForm.setValue('quizId', quizId);
+    }
+  }, [quizId, studentForm]);
+
+  const handleAdminLogin = async (data: AdminLoginData) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/admin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        toast.success('登入成功');
+        router.push('/admin');
+        router.refresh();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.message || '登入失敗');
+      }
+    } catch {
+      toast.error('登入失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleStudentLogin = async (data: StudentLoginData) => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/auth/student', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (response.ok) {
+        toast.success('登入成功');
+        router.push('/quiz');
+        router.refresh();
+      } else {
+        const errorData = await response.json();
+        toast.error(errorData.message || '登入失敗');
+      }
+    } catch {
+      toast.error('登入失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full space-y-8">
+        <div className="text-center">
+          <h2 className="mt-6 text-3xl font-extrabold text-gray-900">
+            Group-Wise 登入
+          </h2>
+          <p className="mt-2 text-sm text-gray-600">
+            請選擇登入方式
+          </p>
+        </div>
+
+        <div className="flex justify-center mb-6">
+          <div className="flex bg-gray-100 rounded-lg p-1">
+            <Button
+              variant={loginType === 'student' ? 'default' : 'ghost'}
+              onClick={() => setLoginType('student')}
+              className="px-6"
+            >
+              學生登入
+            </Button>
+            <Button
+              variant={loginType === 'admin' ? 'default' : 'ghost'}
+              onClick={() => setLoginType('admin')}
+              className="px-6"
+            >
+              管理者登入
+            </Button>
+          </div>
+        </div>
+
+        {loginType === 'admin' ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>管理者登入</CardTitle>
+              <CardDescription>
+                請使用您的管理者帳號登入
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...adminForm}>
+                <form onSubmit={adminForm.handleSubmit(handleAdminLogin)} className="space-y-4">
+                  <FormField
+                    control={adminForm.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>電子郵件</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="email"
+                            placeholder="請輸入電子郵件"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={adminForm.control}
+                    name="password"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>密碼</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="password"
+                            placeholder="請輸入密碼"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? '登入中...' : '登入'}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card>
+            <CardHeader>
+              <CardTitle>學生登入</CardTitle>
+              <CardDescription>
+                請輸入您的姓名和學號
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Form {...studentForm}>
+                <form onSubmit={studentForm.handleSubmit(handleStudentLogin)} className="space-y-4">
+                  <FormField
+                    control={studentForm.control}
+                    name="displayName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>姓名</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="請輸入您的姓名"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={studentForm.control}
+                    name="studentNo"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>學號</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="請輸入您的學號"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={studentForm.control}
+                    name="quizId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>測驗代碼</FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="請輸入測驗代碼"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" className="w-full" disabled={isLoading}>
+                    {isLoading ? '登入中...' : '開始答題'}
+                  </Button>
+                </form>
+              </Form>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>載入中...</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}
