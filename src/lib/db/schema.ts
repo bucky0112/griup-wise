@@ -45,6 +45,8 @@ export const questions = pgTable('questions', {
   quizId: uuid('quiz_id').notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
   type: text('type').$type<QuestionType>().notNull(),
   prompt: text('prompt').notNull(),
+  codeSnippet: text('code_snippet'), // 程式碼片段
+  codeLanguage: text('code_language'), // 程式碼語言
   options: jsonb('options'), // 單選或多選選項
   answerKey: jsonb('answer_key').notNull(), // 正確答案
   score: numeric('score').notNull(), // 題目配分

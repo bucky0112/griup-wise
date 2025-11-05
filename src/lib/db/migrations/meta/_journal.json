@@ -15,6 +15,13 @@
       "when": 1762320476730,
       "tag": "0001_unknown_centennial",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1762334238148,
+      "tag": "0002_old_alex_wilder",
+      "breakpoints": true
     }
   ]
 }

@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 
 export default async function AdminDashboard() {
   const session = await getSession();
@@ -46,7 +47,9 @@ export default async function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">建立測驗和題目</p>
-              <Button className="w-full">管理測驗</Button>
+              <Link href="/admin/quizzes">
+                <Button className="w-full">管理測驗</Button>
+              </Link>
             </CardContent>
           </Card>
 
