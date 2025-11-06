@@ -12,12 +12,14 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed-admins": "tsx scripts/seed-admins.ts",
-    "db:seed-test-data": "tsx scripts/seed-test-data.ts"
+    "db:seed-test-data": "tsx scripts/seed-test-data.ts",
+    "db:normalize-answers": "tsx scripts/normalize-answer-keys.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-label": "^2.1.8",
+    "@radix-ui/react-progress": "^1.1.8",
     "@radix-ui/react-radio-group": "^1.3.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@types/pg": "^8.15.6",

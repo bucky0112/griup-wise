@@ -65,13 +65,13 @@ async function seedTestData() {
     console.log(`✅ Created test quiz: ${testQuiz.title}`);
     console.log(`📝 Quiz ID for student login: ${testQuiz.id}`);
 
-    // Create some test questions
+    // Create some test questions (all answerKey values normalized to arrays for consistency)
     const testQuestions = [
       {
         type: 'single' as const,
         prompt: '下列哪個是 JavaScript 的資料型別？',
         options: ['string', 'number', 'boolean', '以上皆是'],
-        answerKey: 3, // 以上皆是
+        answerKey: ['以上皆是'], // Normalized to array format
         score: '10',
         orderIndex: 1,
       },
@@ -79,7 +79,7 @@ async function seedTestData() {
         type: 'boolean' as const,
         prompt: 'JavaScript 是強型別語言',
         options: null,
-        answerKey: false,
+        answerKey: [false], // Normalized to array format
         score: '10',
         orderIndex: 2,
       },
@@ -87,9 +87,25 @@ async function seedTestData() {
         type: 'short_text' as const,
         prompt: '請寫出 JavaScript 中宣告變數的關鍵字（任一個即可）',
         options: null,
-        answerKey: 'var',
+        answerKey: ['var'], // Normalized to array format
         score: '15',
         orderIndex: 3,
+      },
+      {
+        type: 'multiple' as const,
+        prompt: '選擇所有正確的 JavaScript 變數宣告方式：',
+        options: ['var', 'let', 'const', 'function'],
+        answerKey: ['var', 'let', 'const'], // Multiple correct answers
+        score: '15',
+        orderIndex: 4,
+      },
+      {
+        type: 'numeric' as const,
+        prompt: '請計算 2 + 3 * 4 的結果：',
+        options: null,
+        answerKey: [14], // Normalized to array format
+        score: '10',
+        orderIndex: 5,
       },
     ];
 

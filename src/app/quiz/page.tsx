@@ -1,14 +1,230 @@
-import { redirect } from 'next/navigation';
-import { getSession } from '@/lib/session';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { AlertCircle, BookOpen, CheckCircle2, RefreshCcw } from 'lucide-react';
+import { toast } from 'sonner';
+import QuizInterface, { Quiz, Question, Participant } from '@/components/quiz/QuizInterface';
 
-export default async function QuizPage() {
-  const session = await getSession();
+type QuizStatus = 'loading' | 'ready_to_answer' | 'completed' | 'no_assignment' | 'error';
 
-  if (!session || session.type !== 'student') {
-    redirect('/login');
-  }
+interface AssignmentData {
+  status: QuizStatus;
+  message?: string;
+  quiz?: Quiz;
+  questions?: Question[];
+  participant?: Participant;
+  submittedAt?: string;
+}
+
+export default function QuizPage() {
+  const router = useRouter();
+  const [assignmentData, setAssignmentData] = useState<AssignmentData>({ status: 'loading' });
+
+  const fetchAssignment = useCallback(async () => {
+    try {
+      setAssignmentData({ status: 'loading' });
+
+      const response = await fetch('/api/assignments/next');
+      const data = await response.json();
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/login');
+          return;
+        }
+        throw new Error(data.message || '無法載入測驗資料');
+      }
+
+      setAssignmentData(data);
+    } catch (error) {
+      console.error('Error fetching assignment:', error);
+      setAssignmentData({
+        status: 'error',
+        message: error instanceof Error ? error.message : '載入失敗，請稍後再試'
+      });
+    }
+  }, [router]);
+
+  const handleSubmitSuccess = (submissionData: { submittedAt: string; submissionId: string; totalQuestions: number }) => {
+    setAssignmentData({
+      status: 'completed',
+      message: '答案提交成功！感謝您的參與。',
+      submittedAt: submissionData.submittedAt
+    });
+    toast.success('測驗完成！');
+  };
+
+  const handleRetry = useCallback(() => {
+    fetchAssignment();
+  }, [fetchAssignment]);
+
+  const handleLogout = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchAssignment();
+  }, [fetchAssignment]);
+
+  const renderContent = () => {
+    switch (assignmentData.status) {
+      case 'loading':
+        return (
+          <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <Skeleton className="h-6 w-32" />
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <Skeleton className="h-4 w-full" />
+                    <Skeleton className="h-4 w-2/3" />
+                    <Skeleton className="h-2 w-full" />
+                  </div>
+                </CardContent>
+              </Card>
+              <div className="space-y-4">
+                {[...Array(3)].map((_, i) => (
+                  <Card key={i}>
+                    <CardHeader>
+                      <Skeleton className="h-6 w-24" />
+                    </CardHeader>
+                    <CardContent>
+                      <Skeleton className="h-20 w-full" />
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'ready_to_answer':
+        if (assignmentData.quiz && assignmentData.questions && assignmentData.participant) {
+          return (
+            <div className="py-6 sm:px-6 lg:px-8">
+              <QuizInterface
+                quiz={assignmentData.quiz}
+                questions={assignmentData.questions}
+                participant={assignmentData.participant}
+                onSubmitSuccess={handleSubmitSuccess}
+              />
+            </div>
+          );
+        }
+        break;
+
+      case 'completed':
+        return (
+          <div className="max-w-2xl mx-auto py-12 px-6">
+            <Card>
+              <CardContent className="pt-8">
+                <div className="text-center space-y-6">
+                  <div className="mx-auto w-16 h-16 bg-green-100 rounded-full flex items-center justify-center">
+                    <CheckCircle2 className="w-8 h-8 text-green-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                      測驗完成！
+                    </h1>
+                    <p className="text-gray-600">
+                      {assignmentData.message || '您已成功完成測驗，感謝您的參與。'}
+                    </p>
+                  </div>
+                  {assignmentData.submittedAt && (
+                    <p className="text-sm text-gray-500">
+                      提交時間：{new Date(assignmentData.submittedAt).toLocaleString('zh-TW')}
+                    </p>
+                  )}
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600">
+                      系統將根據您的答題表現進行分組，分組結果將在老師公布後顯示。
+                    </p>
+                    <Button variant="outline" onClick={() => router.push('/')}>
+                      返回首頁
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'no_assignment':
+        return (
+          <div className="max-w-2xl mx-auto py-12 px-6">
+            <Card>
+              <CardContent className="pt-8">
+                <div className="text-center space-y-6">
+                  <div className="mx-auto w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center">
+                    <BookOpen className="w-8 h-8 text-gray-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                      暫無可答題測驗
+                    </h1>
+                    <p className="text-gray-600">
+                      {assignmentData.message || '目前沒有可作答的測驗，請聯絡任課老師確認測驗狀態。'}
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <Button onClick={handleRetry} variant="outline">
+                      <RefreshCcw className="w-4 h-4 mr-2" />
+                      重新檢查
+                    </Button>
+                    <p className="text-sm text-gray-500">
+                      如有疑問，請聯絡任課老師或管理員。
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+
+      case 'error':
+        return (
+          <div className="max-w-2xl mx-auto py-12 px-6">
+            <Card>
+              <CardContent className="pt-8">
+                <div className="text-center space-y-6">
+                  <div className="mx-auto w-16 h-16 bg-red-100 rounded-full flex items-center justify-center">
+                    <AlertCircle className="w-8 h-8 text-red-600" />
+                  </div>
+                  <div>
+                    <h1 className="text-2xl font-bold text-gray-900 mb-2">
+                      載入失敗
+                    </h1>
+                    <p className="text-gray-600">
+                      {assignmentData.message || '系統發生錯誤，請稍後再試。'}
+                    </p>
+                  </div>
+                  <div className="space-y-3">
+                    <Button onClick={handleRetry}>
+                      <RefreshCcw className="w-4 h-4 mr-2" />
+                      重試
+                    </Button>
+                    <p className="text-sm text-gray-500">
+                      如問題持續發生，請聯絡技術支援。
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        );
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -17,80 +233,20 @@ export default async function QuizPage() {
           <div className="flex justify-between items-center py-6">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">答題系統</h1>
-              <p className="text-gray-600">歡迎，{session.displayName} ({session.studentNo})</p>
+              {assignmentData.participant && (
+                <p className="text-gray-600">
+                  歡迎，{assignmentData.participant.displayName} ({assignmentData.participant.studentNo})
+                </p>
+              )}
             </div>
-            <form action="/api/auth/logout" method="POST">
-              <Button variant="outline" type="submit">
-                登出
-              </Button>
-            </form>
+            <Button variant="outline" onClick={handleLogout}>
+              登出
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto py-6 sm:px-6 lg:px-8">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>測驗資訊</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div>
-                  <p className="text-gray-600">學生姓名</p>
-                  <p className="font-medium">{session.displayName}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">學號</p>
-                  <p className="font-medium">{session.studentNo}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">測驗 ID</p>
-                  <p className="font-medium text-xs">{session.quizId}</p>
-                </div>
-                <div>
-                  <p className="text-gray-600">參與者 ID</p>
-                  <p className="font-medium text-xs">{session.participantId}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>開始測驗</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-600 mb-4">
-                您已成功登入測驗系統。請注意，測驗完成後將會自動計算分數用於分組，但不會向您顯示具體分數。
-              </p>
-              <div className="flex gap-4">
-                <Button className="flex-1">
-                  開始答題
-                </Button>
-                <Button variant="outline" className="flex-1">
-                  檢視分組
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>測驗說明</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <ul className="list-disc list-inside space-y-2 text-sm text-gray-600">
-                <li>請確實完成所有題目後再提交</li>
-                <li>測驗只能提交一次，請謹慎作答</li>
-                <li>系統會根據您的表現進行自動分組</li>
-                <li>分組結果將在老師公布後顯示</li>
-                <li>如有技術問題，請聯繫管理者</li>
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      {renderContent()}
     </div>
   );
 }
