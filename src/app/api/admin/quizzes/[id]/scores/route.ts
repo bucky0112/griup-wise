@@ -167,7 +167,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         student_no: participant.student_no,
         total_score: submission ? parseFloat(submission.total_score) : null,
         submitted_at: submission ? submission.submitted_at : null,
-        rank: null, // Will be calculated below
+        rank: null as number | null, // Will be calculated below
         answers_detail: submission ?
           quizQuestions.map(question => {
             const answer = answersMap.get(submission.participant_id)?.find(a => a.question_id === question.id);

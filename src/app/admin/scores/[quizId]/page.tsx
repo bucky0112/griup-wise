@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import Link from 'next/link';
+import { Eye } from 'lucide-react';
 
 interface PageProps {
   params: Promise<{ quizId: string }>;
@@ -269,6 +270,7 @@ export default async function ScoresPage({ params }: PageProps) {
                     <TableHead>姓名</TableHead>
                     <TableHead>總分</TableHead>
                     <TableHead>交卷時間</TableHead>
+                    <TableHead>操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -290,6 +292,14 @@ export default async function ScoresPage({ params }: PageProps) {
                           new Date(participant.submitted_at).toLocaleString('zh-TW') :
                           '-'
                         }
+                      </TableCell>
+                      <TableCell>
+                        <Link href={`/admin/answers/${quiz.id}/${participant.id}`}>
+                          <Button variant="outline" size="sm">
+                            <Eye className="w-4 h-4 mr-1" />
+                            查看作答
+                          </Button>
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}
