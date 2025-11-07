@@ -101,6 +101,22 @@ export const groupingRuns = pgTable('grouping_runs', {
   status: text('status').notNull(), // 'active' | 'archived'
 });
 
+// Grouping Events table (分組觸發事件記錄)
+export const groupingEvents = pgTable('grouping_events', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  quizId: uuid('quiz_id').notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  eventType: text('event_type').notNull(), // 'submission' | 'manual_trigger' | 'config_change'
+  participantId: uuid('participant_id').references(() => participants.id, { onDelete: 'cascade' }), // Null for non-participant events
+  oldRankingHash: text('old_ranking_hash'), // Hash of ranking before this event
+  newRankingHash: text('new_ranking_hash'), // Hash of ranking after this event
+  triggerMetadata: jsonb('trigger_metadata'), // Additional event-specific data
+  shouldTriggerGrouping: boolean('should_trigger_grouping').notNull(), // Whether this event should trigger re-grouping
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({
+  quizCreatedAtIndex: index('grouping_events_quiz_created_idx').on(table.quizId, table.createdAt),
+  eventTypeIndex: index('grouping_events_type_idx').on(table.eventType),
+}));
+
 // Groups table (分組紀錄)
 export const groups = pgTable('groups', {
   id: uuid('id').defaultRandom().primaryKey(),
@@ -152,6 +168,7 @@ export const quizzesRelations = relations(quizzes, ({ one, many }) => ({
   submissions: many(submissions),
   groups: many(groups),
   groupingRuns: many(groupingRuns),
+  groupingEvents: many(groupingEvents),
 }));
 
 export const questionsRelations = relations(questions, ({ one, many }) => ({
@@ -204,6 +221,17 @@ export const groupingRunsRelations = relations(groupingRuns, ({ one, many }) => 
     references: [admins.id],
   }),
   groups: many(groups),
+}));
+
+export const groupingEventsRelations = relations(groupingEvents, ({ one }) => ({
+  quiz: one(quizzes, {
+    fields: [groupingEvents.quizId],
+    references: [quizzes.id],
+  }),
+  participant: one(participants, {
+    fields: [groupingEvents.participantId],
+    references: [participants.id],
+  }),
 }));
 
 export const groupsRelations = relations(groups, ({ one, many }) => ({

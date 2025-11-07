@@ -24,26 +24,107 @@ const regenerateGroupsSchema = z.object({
   strategy: z.literal('snake_by_score'),
 });
 
-// Helper function to perform snake distribution
-function snakeDistribute<T>(items: T[], numGroups: number): T[][] {
-  const result: T[][] = Array(numGroups).fill(null).map(() => []);
+// Helper function to calculate optimal group sizes
+function calculateOptimalGrouping(participantCount: number, targetSize: number, minGroups?: number, maxGroups?: number): {
+  groupCount: number;
+  groupSizes: number[];
+} {
+  if (participantCount === 0) {
+    return { groupCount: 0, groupSizes: [] };
+  }
 
-  let currentGroup = 0;
-  let direction = 1; // 1 for forward, -1 for backward
+  const candidates = [];
 
-  for (const item of items) {
-    result[currentGroup].push(item);
+  // Test different group counts within reasonable range
+  const minGroupCount = minGroups || 1;
+  const maxGroupCount = maxGroups || Math.ceil(participantCount / 2);
 
-    currentGroup += direction;
+  for (let groups = minGroupCount; groups <= maxGroupCount; groups++) {
+    const baseSize = Math.floor(participantCount / groups);
+    const remainder = participantCount % groups;
 
-    // Change direction when reaching the ends
-    if (currentGroup >= numGroups) {
-      currentGroup = numGroups - 1;
-      direction = -1;
-    } else if (currentGroup < 0) {
-      currentGroup = 0;
-      direction = 1;
+    // Calculate distribution - larger groups first
+    const groupSizes = Array(groups).fill(baseSize);
+    for (let i = 0; i < remainder; i++) {
+      groupSizes[i]++;
     }
+
+    // Calculate deviations from target
+    const deviations = groupSizes.map(size => Math.abs(size - targetSize));
+    const maxDeviation = Math.max(...deviations);
+    const avgDeviation = deviations.reduce((sum, dev) => sum + dev, 0) / groups;
+
+    // Score: prefer smaller max deviation, then smaller average deviation
+    const score = maxDeviation * 10 + avgDeviation;
+
+    candidates.push({
+      groupCount: groups,
+      groupSizes,
+      maxDeviation,
+      avgDeviation,
+      score
+    });
+  }
+
+  // Add the simple ceil calculation as a fallback
+  const simpleGroups = Math.ceil(participantCount / targetSize);
+  if ((!minGroups || simpleGroups >= minGroups) && (!maxGroups || simpleGroups <= maxGroups)) {
+    const baseSize = Math.floor(participantCount / simpleGroups);
+    const remainder = participantCount % simpleGroups;
+
+    const groupSizes = Array(simpleGroups).fill(baseSize);
+    for (let i = 0; i < remainder; i++) {
+      groupSizes[i]++;
+    }
+
+    const deviations = groupSizes.map(size => Math.abs(size - targetSize));
+    const maxDeviation = Math.max(...deviations);
+    const avgDeviation = deviations.reduce((sum, dev) => sum + dev, 0) / simpleGroups;
+    const score = maxDeviation * 10 + avgDeviation;
+
+    candidates.push({
+      groupCount: simpleGroups,
+      groupSizes,
+      maxDeviation,
+      avgDeviation,
+      score
+    });
+  }
+
+  // Find best candidate (lowest score)
+  candidates.sort((a, b) => a.score - b.score);
+  const best = candidates[0];
+
+  return {
+    groupCount: best.groupCount,
+    groupSizes: best.groupSizes
+  };
+}
+
+// Helper function to perform snake distribution with predetermined group sizes
+function snakeDistributeWithSizes<T>(items: T[], groupSizes: number[]): T[][] {
+  const groupCount = groupSizes.length;
+  const result: T[][] = Array(groupCount).fill(null).map(() => []);
+
+  let itemIndex = 0;
+  let round = 0;
+
+  while (itemIndex < items.length) {
+    // Determine direction for this round (snake pattern)
+    const isForward = round % 2 === 0;
+    const groupOrder = isForward
+      ? Array.from({ length: groupCount }, (_, i) => i)
+      : Array.from({ length: groupCount }, (_, i) => groupCount - 1 - i);
+
+    // Assign one item to each group that still has capacity
+    for (const groupIndex of groupOrder) {
+      if (itemIndex >= items.length) break;
+      if (result[groupIndex].length < groupSizes[groupIndex]) {
+        result[groupIndex].push(items[itemIndex]);
+        itemIndex++;
+      }
+    }
+    round++;
   }
 
   return result;
@@ -161,22 +242,48 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Calculate number of groups
-    let numGroups = Math.ceil(participantsToGroup.length / config.target_group_size);
+    // Calculate optimal grouping
+    const { groupCount, groupSizes } = calculateOptimalGrouping(
+      participantsToGroup.length,
+      config.target_group_size,
+      config.min_groups,
+      config.max_groups
+    );
 
-    if (config.min_groups && numGroups < config.min_groups) {
-      numGroups = config.min_groups;
-    }
-
-    if (config.max_groups && numGroups > config.max_groups) {
-      numGroups = config.max_groups;
-    }
-
-    // Perform snake distribution
-    const distributedGroups = snakeDistribute(participantsToGroup, numGroups);
+    // Perform snake distribution with optimal group sizes
+    const distributedGroups = snakeDistributeWithSizes(participantsToGroup, groupSizes);
 
     // Use transaction to ensure data consistency
     const result = await db.transaction(async (tx) => {
+      // Get existing active groups to delete
+      const existingGroups = await tx
+        .select({ id: groups.id })
+        .from(groups)
+        .leftJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+        .where(and(
+          eq(groupingRuns.quizId, quizId),
+          eq(groupingRuns.status, 'active')
+        ));
+
+      // Delete existing group members and groups (due to foreign key constraint)
+      if (existingGroups.length > 0) {
+        const groupIds = existingGroups.map(g => g.id);
+
+        // Delete all group members for existing groups
+        for (const groupId of groupIds) {
+          await tx
+            .delete(groupMembers)
+            .where(eq(groupMembers.groupId, groupId));
+        }
+
+        // Delete all existing groups
+        for (const groupId of groupIds) {
+          await tx
+            .delete(groups)
+            .where(eq(groups.id, groupId));
+        }
+      }
+
       // Archive any existing active runs
       await tx
         .update(groupingRuns)
@@ -196,8 +303,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           config: {
             target_group_size: config.target_group_size,
             include_unsubmitted: config.include_unsubmitted,
-            min_groups: config.min_groups || numGroups,
-            max_groups: config.max_groups || numGroups,
+            min_groups: config.min_groups || groupCount,
+            max_groups: config.max_groups || groupCount,
             sort_by: 'total_score',
           },
           status: 'active',

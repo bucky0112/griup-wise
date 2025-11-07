@@ -1,0 +1,890 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from 'sonner';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverEvent,
+  DragStartEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import {
+  useSortable,
+} from '@dnd-kit/sortable';
+import { useDroppable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
+
+// Draggable Member Component
+interface DraggableMemberProps {
+  member: Member;
+  isActive: boolean;
+  isBatchMode?: boolean;
+  isSelected?: boolean;
+  isHydrated?: boolean;
+  onToggleSelection?: () => void;
+}
+
+function DraggableMember({
+  member,
+  isActive,
+  isBatchMode = false,
+  isSelected = false,
+  isHydrated = false,
+  onToggleSelection
+}: DraggableMemberProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: member.participant_id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  const getMemberStatusBadge = (member: Member) => {
+    if (member.total_score === null) {
+      return <Badge variant="destructive">未交卷</Badge>;
+    } else if (member.total_score >= 50) {
+      return <Badge variant="default">高分</Badge>;
+    } else if (member.total_score >= 30) {
+      return <Badge variant="secondary">中等</Badge>;
+    } else {
+      return <Badge variant="outline">待加強</Badge>;
+    }
+  };
+
+  // Only apply drag attributes and listeners when not in batch mode and hydrated
+  const shouldShowBatchMode = isHydrated && isBatchMode;
+  const dragProps = shouldShowBatchMode ? {} : { ...attributes, ...listeners };
+  const dragStyle = shouldShowBatchMode ? {} : style;
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      {...dragProps}
+      className={`
+        flex items-center justify-between p-3 bg-gray-50 rounded-lg transition-all duration-200
+        ${shouldShowBatchMode ?
+          `cursor-pointer ${isSelected ? 'ring-2 ring-green-500 bg-green-50' : 'hover:bg-gray-100'}` :
+          `cursor-grab hover:bg-gray-100 ${isDragging ? 'shadow-lg scale-105' : ''} ${isActive ? 'ring-2 ring-blue-500' : ''}`
+        }
+      `}
+      onClick={shouldShowBatchMode ? onToggleSelection : undefined}
+    >
+      <div className="flex items-center space-x-3">
+        {shouldShowBatchMode && (
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={onToggleSelection}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+        <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+          {member.rank_index}
+        </div>
+        <div>
+          <div className="font-medium">{member.display_name}</div>
+          <div className="text-sm text-gray-600">{member.student_no}</div>
+        </div>
+      </div>
+      <div className="flex items-center space-x-3">
+        {member.total_score !== null && (
+          <span className="text-sm font-mono">
+            {member.total_score.toFixed(1)} 分
+          </span>
+        )}
+        {getMemberStatusBadge(member)}
+        {/* Drag handle indicator - only show when not in batch mode */}
+        {!shouldShowBatchMode && (
+          <div className="text-gray-400 ml-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M9 5h2v2H9zm0 4h2v2H9zm0 4h2v2H9zm0 4h2v2H9zm4-12h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2zm0 4h2v2h-2z"/>
+            </svg>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Droppable Group Container Component
+function DroppableGroup({ group, children }: { group: Group; children: React.ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: group.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`
+        min-h-[100px] transition-all duration-200 rounded-lg
+        ${isOver ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : ''}
+      `}
+    >
+      {children}
+    </div>
+  );
+}
+
+interface Member {
+  participant_id: string;
+  display_name: string;
+  student_no: string;
+  total_score: number | null;
+  rank_index: number;
+}
+
+interface Group {
+  id: string;
+  name: string;
+  order_index: number;
+  notes: string;
+  members: Member[];
+}
+
+interface UngroupedParticipant {
+  id: string;
+  display_name: string;
+  student_no: string;
+  reason: 'excluded' | 'unsubmitted';
+}
+
+interface RunInfo {
+  id: string;
+  created_at: string;
+  config: {
+    target_group_size: number;
+    include_unsubmitted: boolean;
+    min_groups?: number;
+    max_groups?: number;
+    sort_by: string;
+  };
+  status: string;
+}
+
+interface GroupManagementProps {
+  quizId: string;
+  initialData: {
+    run_info: RunInfo | null;
+    groups: Group[];
+    ungrouped_participants: UngroupedParticipant[];
+  };
+}
+
+interface GroupingConfig {
+  target_group_size: number;
+  include_unsubmitted: boolean;
+  min_groups?: number;
+  max_groups?: number;
+  reason?: string;
+}
+
+export default function GroupManagement({ quizId, initialData }: GroupManagementProps) {
+  const [data, setData] = useState(initialData);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAutoGroupDialog, setShowAutoGroupDialog] = useState(false);
+  const [autoGroupConfig, setAutoGroupConfig] = useState<GroupingConfig>({
+    target_group_size: 4,
+    include_unsubmitted: false,
+  });
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Batch operations state
+  const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
+  const [showBatchDialog, setShowBatchDialog] = useState(false);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+
+  // DnD sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleAutoGroup = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/quizzes/${quizId}/groups/auto`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...autoGroupConfig,
+          reason: '管理者手動觸發自動分組',
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || '自動分組失敗');
+      }
+
+      toast.success(`自動分組完成！建立了 ${result.groupsCreated} 個組別，共 ${result.totalMembers} 位成員`);
+
+      // 重新載入數據
+      await refreshData();
+      setShowAutoGroupDialog(false);
+
+    } catch (error) {
+      console.error('Auto grouping error:', error);
+      toast.error(error instanceof Error ? error.message : '自動分組失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleQuickAutoGroup = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/quizzes/${quizId}/groups/auto`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_group_size: 4,
+          include_unsubmitted: false,
+          reason: '快速自動分組 (4人一組)',
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || '自動分組失敗');
+      }
+
+      toast.success(`自動分組完成！建立了 ${result.groupsCreated} 個組別，共 ${result.totalMembers} 位成員`);
+      await refreshData();
+
+    } catch (error) {
+      console.error('Quick auto grouping error:', error);
+      toast.error(error instanceof Error ? error.message : '自動分組失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRegenerateGroups = async () => {
+    if (!data.run_info) return;
+
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/quizzes/${quizId}/groups/regenerate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          target_group_size: data.run_info.config.target_group_size,
+          include_unsubmitted: data.run_info.config.include_unsubmitted,
+          min_groups: data.run_info.config.min_groups,
+          max_groups: data.run_info.config.max_groups,
+          strategy: 'snake_by_score',
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || '重新分組失敗');
+      }
+
+      toast.success('重新分組完成！');
+      await refreshData();
+
+    } catch (error) {
+      console.error('Regenerate groups error:', error);
+      toast.error(error instanceof Error ? error.message : '重新分組失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshData = async () => {
+    try {
+      const response = await fetch(`/api/admin/quizzes/${quizId}/groups`, {
+        cache: 'no-store',
+      });
+
+      if (response.ok) {
+        const newData = await response.json();
+        setData(newData);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    }
+  };
+
+  const calculateGroupStats = (groups: Group[]) => {
+    const totalMembers = groups.reduce((sum, group) => sum + group.members.length, 0);
+    const avgGroupSize = totalMembers > 0 ? totalMembers / groups.length : 0;
+
+    const groupSizes = groups.map(g => g.members.length);
+    const minSize = groupSizes.length > 0 ? Math.min(...groupSizes) : 0;
+    const maxSize = groupSizes.length > 0 ? Math.max(...groupSizes) : 0;
+
+    const groupAverages = groups.map(group => {
+      const scores = group.members.filter(m => m.total_score !== null).map(m => m.total_score!);
+      return scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+    });
+
+    const avgScore = groupAverages.length > 0 ? groupAverages.reduce((sum, avg) => sum + avg, 0) / groupAverages.length : 0;
+
+    return {
+      totalMembers,
+      avgGroupSize,
+      minSize,
+      maxSize,
+      sizeVariance: maxSize - minSize,
+      avgScore,
+    };
+  };
+
+  // DnD event handlers
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over) return;
+
+    const memberId = active.id as string;
+    const targetGroupId = over.id as string;
+
+    // Find the member that's being moved
+    const sourceGroup = data.groups.find(g =>
+      g.members.some(m => m.participant_id === memberId)
+    );
+
+    if (!sourceGroup || sourceGroup.id === targetGroupId) return;
+
+    try {
+      const response = await fetch(`/api/admin/groups/move-participant`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantId: memberId,
+          targetGroupId: targetGroupId,
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || '移動失敗');
+      }
+
+      // Optimistically update the UI
+      const sourceMember = sourceGroup.members.find(m => m.participant_id === memberId);
+      if (sourceMember) {
+        setData(prev => ({
+          ...prev,
+          groups: prev.groups.map(group => {
+            if (group.id === sourceGroup.id) {
+              // Remove from source group
+              return {
+                ...group,
+                members: group.members.filter(m => m.participant_id !== memberId)
+              };
+            } else if (group.id === targetGroupId) {
+              // Add to target group
+              return {
+                ...group,
+                members: [...group.members, sourceMember]
+              };
+            }
+            return group;
+          })
+        }));
+      }
+
+      toast.success('成功移動學生');
+    } catch (error) {
+      console.error('Move participant error:', error);
+      toast.error(error instanceof Error ? error.message : '移動失敗，請稍後再試');
+    }
+  };
+
+  // Batch operations handlers
+  const toggleBatchMode = () => {
+    setIsBatchMode(!isBatchMode);
+    setSelectedParticipants(new Set());
+  };
+
+  const toggleParticipantSelection = (participantId: string) => {
+    const newSelected = new Set(selectedParticipants);
+    if (newSelected.has(participantId)) {
+      newSelected.delete(participantId);
+    } else {
+      newSelected.add(participantId);
+    }
+    setSelectedParticipants(newSelected);
+  };
+
+  const selectAllInGroup = (groupMembers: Member[]) => {
+    const newSelected = new Set(selectedParticipants);
+    groupMembers.forEach(member => {
+      newSelected.add(member.participant_id);
+    });
+    setSelectedParticipants(newSelected);
+  };
+
+  const clearSelection = () => {
+    setSelectedParticipants(new Set());
+  };
+
+  const handleBatchMove = async (targetGroupId: string) => {
+    if (selectedParticipants.size === 0) {
+      toast.error('請選擇要移動的學生');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      const response = await fetch('/api/admin/groups/batch-move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          participantIds: Array.from(selectedParticipants),
+          targetGroupId: targetGroupId,
+        }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.message || '批量移動失敗');
+      }
+
+      const result = await response.json();
+      toast.success(`成功移動 ${result.affectedParticipants} 位學生`);
+
+      // Refresh data to show updated state
+      await refreshData();
+      clearSelection();
+      setShowBatchDialog(false);
+
+    } catch (error) {
+      console.error('Batch move error:', error);
+      toast.error(error instanceof Error ? error.message : '批量移動失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const stats = data.groups.length > 0 ? calculateGroupStats(data.groups) : null;
+
+  // 如果沒有分組，顯示初始創建介面
+  if (!data.run_info || data.groups.length === 0) {
+    return (
+      <Card>
+        <CardContent className="text-center py-12">
+          <div className="text-gray-500 mb-4">
+            <svg className="mx-auto h-12 w-12" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">尚未建立分組</h3>
+          <p className="text-gray-600 mb-6">
+            為此測驗建立分組以開始管理學生分配
+          </p>
+          <div className="flex justify-center space-x-4">
+            <Button onClick={handleQuickAutoGroup} disabled={isLoading}>
+              {isLoading ? '分組中...' : '自動分組'}
+            </Button>
+            <Dialog open={showAutoGroupDialog} onOpenChange={setShowAutoGroupDialog}>
+              <DialogTrigger asChild>
+                <Button variant="outline" disabled={isLoading}>
+                  自訂分組設定
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>自動分組設定</DialogTitle>
+                  <DialogDescription>
+                    設定分組參數，系統將依照分數自動進行蛇形分配
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="target_group_size">每組人數</Label>
+                    <Input
+                      id="target_group_size"
+                      type="number"
+                      min="2"
+                      max="10"
+                      value={autoGroupConfig.target_group_size}
+                      onChange={(e) => setAutoGroupConfig(prev => ({
+                        ...prev,
+                        target_group_size: parseInt(e.target.value) || 4
+                      }))}
+                    />
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="include_unsubmitted"
+                      checked={autoGroupConfig.include_unsubmitted}
+                      onCheckedChange={(checked) => setAutoGroupConfig(prev => ({
+                        ...prev,
+                        include_unsubmitted: checked as boolean
+                      }))}
+                    />
+                    <Label htmlFor="include_unsubmitted">包含未交卷學生</Label>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="min_groups">最少組數 (可選)</Label>
+                      <Input
+                        id="min_groups"
+                        type="number"
+                        min="1"
+                        value={autoGroupConfig.min_groups || ''}
+                        onChange={(e) => setAutoGroupConfig(prev => ({
+                          ...prev,
+                          min_groups: e.target.value ? parseInt(e.target.value) : undefined
+                        }))}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="max_groups">最多組數 (可選)</Label>
+                      <Input
+                        id="max_groups"
+                        type="number"
+                        min="1"
+                        value={autoGroupConfig.max_groups || ''}
+                        onChange={(e) => setAutoGroupConfig(prev => ({
+                          ...prev,
+                          max_groups: e.target.value ? parseInt(e.target.value) : undefined
+                        }))}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end space-x-2 pt-4">
+                  <Button variant="outline" onClick={() => setShowAutoGroupDialog(false)}>
+                    取消
+                  </Button>
+                  <Button onClick={handleAutoGroup} disabled={isLoading}>
+                    {isLoading ? '分組中...' : '開始分組'}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // 有分組的情況，顯示分組管理介面
+  return (
+    <>
+      {/* Statistics Overview */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">總組數</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.groups.length}</div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">總成員</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalMembers}</div>
+              <p className="text-xs text-gray-500">平均 {stats.avgGroupSize.toFixed(1)} 人/組</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">組別平衡</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {stats.sizeVariance === 0 ? '完美' : `±${stats.sizeVariance}`}
+              </div>
+              <p className="text-xs text-gray-500">{stats.minSize}-{stats.maxSize} 人</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm">平均分數</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.avgScore.toFixed(1)}</div>
+              <p className="text-xs text-gray-500">各組平均</p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Group Configuration Info */}
+      {data.run_info && (
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>分組配置</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <span className="font-medium">目標人數：</span>
+                <span>{data.run_info.config.target_group_size} 人/組</span>
+              </div>
+              <div>
+                <span className="font-medium">排序方式：</span>
+                <span>{data.run_info.config.sort_by === 'total_score' ? '總分' : '其他'}</span>
+              </div>
+              <div>
+                <span className="font-medium">未交卷者：</span>
+                <span>{data.run_info.config.include_unsubmitted ? '包含' : '不包含'}</span>
+              </div>
+              <div>
+                <span className="font-medium">狀態：</span>
+                <Badge variant={data.run_info.status === 'active' ? 'default' : 'secondary'}>
+                  {data.run_info.status === 'active' ? '活躍' : '已封存'}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Batch Operations Toolbar */}
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <Button
+                variant={isBatchMode ? "default" : "outline"}
+                onClick={toggleBatchMode}
+                disabled={isLoading}
+              >
+                {isBatchMode ? '退出批量模式' : '批量操作'}
+              </Button>
+
+              {isHydrated && isBatchMode && (
+                <>
+                  <div className="text-sm text-gray-600">
+                    已選擇 {selectedParticipants.size} 位學生
+                  </div>
+                  {selectedParticipants.size > 0 && (
+                    <>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={clearSelection}
+                        disabled={isLoading}
+                      >
+                        清除選擇
+                      </Button>
+                      <Dialog open={showBatchDialog} onOpenChange={setShowBatchDialog}>
+                        <DialogTrigger asChild>
+                          <Button size="sm" disabled={isLoading}>
+                            移動至組別
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>批量移動學生</DialogTitle>
+                            <DialogDescription>
+                              選擇要將 {selectedParticipants.size} 位學生移動到的目標組別
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="grid gap-3">
+                            {data.groups.map((group) => (
+                              <Button
+                                key={group.id}
+                                variant="outline"
+                                className="justify-start"
+                                onClick={() => handleBatchMove(group.id)}
+                                disabled={isLoading}
+                              >
+                                {group.name} ({group.members.length} 人)
+                              </Button>
+                            ))}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            {isHydrated && isBatchMode && (
+              <div className="text-sm text-gray-500">
+                點擊學生卡片選擇，或使用組別的全選功能
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Groups List with Drag and Drop */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="space-y-6">
+          {data.groups.map((group) => (
+            <Card key={group.id}>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-lg">{group.name}</CardTitle>
+                  <p className="text-sm text-gray-600">
+                    {group.members.length} 位成員
+                    {group.members.length > 0 && (
+                      ` · 平均分數 ${
+                        group.members
+                          .filter(m => m.total_score !== null)
+                          .reduce((sum, m) => sum + m.total_score!, 0) /
+                        group.members.filter(m => m.total_score !== null).length || 0
+                      }`
+                    )}
+                  </p>
+                </div>
+                <div className="flex space-x-2">
+                  {isHydrated && isBatchMode && group.members.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => selectAllInGroup(group.members)}
+                      disabled={isLoading}
+                    >
+                      全選此組
+                    </Button>
+                  )}
+                  <Button variant="outline" size="sm">
+                    編輯組別
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <DroppableGroup group={group}>
+                {group.members.length === 0 ? (
+                  <p className="text-gray-500 text-center py-4">此組別暫無成員</p>
+                ) : (
+                  <SortableContext
+                    items={group.members.map(m => m.participant_id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    <div className="grid gap-3">
+                      {group.members
+                        .sort((a, b) => a.rank_index - b.rank_index)
+                        .map((member) => (
+                          <DraggableMember
+                            key={member.participant_id}
+                            member={member}
+                            isActive={activeId === member.participant_id}
+                            isBatchMode={isBatchMode}
+                            isSelected={selectedParticipants.has(member.participant_id)}
+                            isHydrated={isHydrated}
+                            onToggleSelection={() => toggleParticipantSelection(member.participant_id)}
+                          />
+                        ))}
+                    </div>
+                  </SortableContext>
+                )}
+              </DroppableGroup>
+            </CardContent>
+          </Card>
+        ))}
+        </div>
+      </DndContext>
+
+      {/* Ungrouped Participants */}
+      {data.ungrouped_participants.length > 0 && (
+        <Card className="mt-6">
+          <CardHeader>
+            <CardTitle className="text-lg text-orange-600">
+              未分組成員 ({data.ungrouped_participants.length} 位)
+            </CardTitle>
+            <p className="text-sm text-gray-600">
+              以下參與者未被分配到任何組別
+            </p>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-3">
+              {data.ungrouped_participants.map((participant) => (
+                <div
+                  key={participant.id}
+                  className="flex items-center justify-between p-3 bg-orange-50 rounded-lg border border-orange-200"
+                >
+                  <div>
+                    <div className="font-medium">{participant.display_name}</div>
+                    <div className="text-sm text-gray-600">{participant.student_no}</div>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <Badge variant={participant.reason === 'unsubmitted' ? 'destructive' : 'secondary'}>
+                      {participant.reason === 'unsubmitted' ? '未交卷' : '被排除'}
+                    </Badge>
+                    <Button variant="outline" size="sm">
+                      手動分組
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Action Buttons */}
+      <div className="mt-8 flex justify-center space-x-4">
+        <Button onClick={handleRegenerateGroups} disabled={isLoading}>
+          {isLoading ? '分組中...' : '重新分組'}
+        </Button>
+        <Button variant="outline">
+          匯出分組名單
+        </Button>
+        <Button variant="outline">
+          公開分組
+        </Button>
+      </div>
+    </>
+  );
+}

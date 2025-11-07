@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { questions, submissions, answers, quizzes } from '@/lib/db/schema';
+import { questions, submissions, answers, quizzes, participants } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { calculateScore } from '@/lib/scoring';
+import { groupingManager } from '@/lib/grouping/manager';
+import { defaultConfigs } from '@/lib/grouping/config';
 
 const submitAnswerSchema = z.object({
   answers: z.record(z.string(), z.unknown()) // questionId -> answer
@@ -131,12 +133,56 @@ export async function POST(request: NextRequest) {
       return newSubmission[0];
     });
 
-    return NextResponse.json({
-      message: '答案提交成功！感謝您的參與。',
-      submissionId: result.id,
-      submittedAt: result.submittedAt,
-      totalQuestions: quizQuestions.length
-    });
+    // Trigger automatic grouping evaluation after successful submission
+    try {
+      // Use default medium config for auto-grouping (4 people per group)
+      const groupingConfig = defaultConfigs.medium;
+
+      const groupingResult = await groupingManager.autoGroup(
+        session.quizId,
+        session.participantId,
+        groupingConfig
+      );
+
+      // Log the grouping evaluation result for debugging
+      console.log('Auto-grouping evaluation:', {
+        quizId: session.quizId,
+        participantId: session.participantId,
+        triggered: groupingResult.success,
+        reason: groupingResult.triggerEvaluation?.reason,
+        groupsCreated: groupingResult.groupsCreated,
+        totalMembers: groupingResult.totalMembers,
+      });
+
+      // Return response with grouping information
+      return NextResponse.json({
+        message: '答案提交成功！感謝您的參與。',
+        submissionId: result.id,
+        submittedAt: result.submittedAt,
+        totalQuestions: quizQuestions.length,
+        autoGrouping: {
+          evaluated: true,
+          triggered: groupingResult.success,
+          reason: groupingResult.triggerEvaluation?.reason,
+          groupsCreated: groupingResult.groupsCreated,
+        },
+      });
+
+    } catch (groupingError) {
+      // Don't fail the submission if grouping fails
+      console.error('Auto-grouping failed:', groupingError);
+
+      return NextResponse.json({
+        message: '答案提交成功！感謝您的參與。',
+        submissionId: result.id,
+        submittedAt: result.submittedAt,
+        totalQuestions: quizQuestions.length,
+        autoGrouping: {
+          evaluated: false,
+          error: 'Grouping evaluation failed',
+        },
+      });
+    }
 
   } catch (error) {
     console.error('Error submitting answers:', error);

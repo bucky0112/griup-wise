@@ -1,5 +1,8 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
+import { db } from '@/lib/db';
+import { classes, quizzes, participants } from '@/lib/db/schema';
+import { eq, count } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -10,6 +13,27 @@ export default async function AdminDashboard() {
   if (!session || session.type !== 'admin') {
     redirect('/login');
   }
+
+  // Get statistics for dashboard
+  const [classesCount, quizzesCount, participantsCountResult] = await Promise.all([
+    db
+      .select({ count: count(classes.id) })
+      .from(classes)
+      .where(eq(classes.createdBy, session.id)),
+    db
+      .select({ count: count(quizzes.id) })
+      .from(quizzes)
+      .where(eq(quizzes.createdBy, session.id)),
+    db
+      .select({ count: count(participants.id) })
+      .from(participants)
+      .innerJoin(quizzes, eq(quizzes.id, participants.quizId))
+      .where(eq(quizzes.createdBy, session.id))
+  ]);
+
+  const totalClasses = classesCount[0]?.count || 0;
+  const totalQuizzes = quizzesCount[0]?.count || 0;
+  const totalParticipants = participantsCountResult[0]?.count || 0;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -37,7 +61,10 @@ export default async function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">建立和管理班級</p>
-              <Button className="w-full">管理班級</Button>
+              <p className="text-sm text-blue-600 mb-3">目前有 {totalClasses} 個班級</p>
+              <Link href="/admin/classes">
+                <Button className="w-full">管理班級</Button>
+              </Link>
             </CardContent>
           </Card>
 
@@ -47,6 +74,7 @@ export default async function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">建立測驗和題目</p>
+              <p className="text-sm text-green-600 mb-3">目前有 {totalQuizzes} 個測驗</p>
               <Link href="/admin/quizzes">
                 <Button className="w-full">管理測驗</Button>
               </Link>
@@ -59,6 +87,7 @@ export default async function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">檢視分數和分組</p>
+              <p className="text-sm text-purple-600 mb-3">目前有 {totalParticipants} 名學生</p>
               <Link href="/admin/groups">
                 <Button className="w-full">檢視分組</Button>
               </Link>
