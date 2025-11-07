@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
-import { eq, sum, count, isNotNull } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -188,7 +188,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     // Assign ranks
     submittedParticipants.forEach((participant, index) => {
-      (participant as any).rank = index + 1;
+      participant.rank = index + 1;
     });
 
     // Calculate statistics from submitted scores

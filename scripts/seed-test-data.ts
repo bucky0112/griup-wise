@@ -4,7 +4,6 @@ import * as dotenv from 'dotenv';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import { admins, classes, quizzes, questions } from '../src/lib/db/schema';
-import { eq } from 'drizzle-orm';
 
 // Load environment variables
 dotenv.config({ path: '.env.local' });

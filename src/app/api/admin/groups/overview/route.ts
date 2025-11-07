@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, classes, participants, submissions, groupingRuns, groups } from '@/lib/db/schema';
-import { eq, and, count, isNotNull } from 'drizzle-orm';
+import { eq, and, count } from 'drizzle-orm';
 
 export async function GET() {
   try {

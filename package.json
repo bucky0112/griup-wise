@@ -13,7 +13,11 @@
     "db:studio": "drizzle-kit studio",
     "db:seed-admins": "tsx scripts/seed-admins.ts",
     "db:seed-test-data": "tsx scripts/seed-test-data.ts",
-    "db:normalize-answers": "tsx scripts/normalize-answer-keys.ts"
+    "db:normalize-answers": "tsx scripts/normalize-answer-keys.ts",
+    "seed:student-responses": "tsx scripts/seed-student-responses.ts",
+    "test:grouping": "tsx scripts/test-grouping.ts",
+    "group:cleanup": "tsx scripts/cleanup-test-data.ts",
+    "group:stats": "tsx scripts/group-stats.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

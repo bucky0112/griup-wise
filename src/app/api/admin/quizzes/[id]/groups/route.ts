@@ -9,7 +9,7 @@ import {
   participants,
   submissions
 } from '@/lib/db/schema';
-import { eq, and, isNull } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
