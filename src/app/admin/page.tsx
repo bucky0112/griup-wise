@@ -59,7 +59,9 @@ export default async function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <p className="text-gray-600 mb-4">檢視分數和分組</p>
-              <Button className="w-full">檢視分組</Button>
+              <Link href="/admin/groups">
+                <Button className="w-full">檢視分組</Button>
+              </Link>
             </CardContent>
           </Card>
         </div>

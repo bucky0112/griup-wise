@@ -22,6 +22,13 @@
       "when": 1762334238148,
       "tag": "0002_old_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1762485130703,
+      "tag": "0003_eager_grandmaster",
+      "breakpoints": true
     }
   ]
 }

@@ -90,12 +90,25 @@ export const answers = pgTable('answers', {
   submissionQuestionUnique: unique('answers_submission_question_unique').on(table.submissionId, table.questionId),
 }));
 
+// Grouping Runs table (分組執行記錄)
+export const groupingRuns = pgTable('grouping_runs', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  quizId: uuid('quiz_id').notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  createdBy: uuid('created_by').notNull().references(() => admins.id),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  strategy: text('strategy').notNull(), // 'snake_by_score'
+  config: jsonb('config').notNull(), // { target_group_size, include_unsubmitted, min_groups, max_groups, sort_by }
+  status: text('status').notNull(), // 'active' | 'archived'
+});
+
 // Groups table (分組紀錄)
 export const groups = pgTable('groups', {
   id: uuid('id').defaultRandom().primaryKey(),
   quizId: uuid('quiz_id').notNull().references(() => quizzes.id, { onDelete: 'cascade' }),
+  groupingRunId: uuid('grouping_run_id').references(() => groupingRuns.id, { onDelete: 'cascade' }),
   name: text('name').notNull(), // 例如「第 1 組」
   orderIndex: integer('order_index').notNull(),
+  notes: text('notes'), // 組別備註
 }, (table) => ({
   quizOrderUnique: unique('groups_quiz_order_unique').on(table.quizId, table.orderIndex),
 }));
@@ -114,6 +127,7 @@ export const groupMembers = pgTable('group_members', {
 export const adminsRelations = relations(admins, ({ many }) => ({
   classes: many(classes),
   quizzes: many(quizzes),
+  groupingRuns: many(groupingRuns),
 }));
 
 export const classesRelations = relations(classes, ({ one, many }) => ({
@@ -137,6 +151,7 @@ export const quizzesRelations = relations(quizzes, ({ one, many }) => ({
   participants: many(participants),
   submissions: many(submissions),
   groups: many(groups),
+  groupingRuns: many(groupingRuns),
 }));
 
 export const questionsRelations = relations(questions, ({ one, many }) => ({
@@ -179,10 +194,26 @@ export const answersRelations = relations(answers, ({ one }) => ({
   }),
 }));
 
+export const groupingRunsRelations = relations(groupingRuns, ({ one, many }) => ({
+  quiz: one(quizzes, {
+    fields: [groupingRuns.quizId],
+    references: [quizzes.id],
+  }),
+  createdBy: one(admins, {
+    fields: [groupingRuns.createdBy],
+    references: [admins.id],
+  }),
+  groups: many(groups),
+}));
+
 export const groupsRelations = relations(groups, ({ one, many }) => ({
   quiz: one(quizzes, {
     fields: [groups.quizId],
     references: [quizzes.id],
+  }),
+  groupingRun: one(groupingRuns, {
+    fields: [groups.groupingRunId],
+    references: [groupingRuns.id],
   }),
   members: many(groupMembers),
 }));

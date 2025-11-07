@@ -83,9 +83,15 @@ export default async function QuizzesManagement() {
                             </span>
                           </div>
                         </div>
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2">
                           <Link href={`/admin/quizzes/${quiz.id}/questions`}>
                             <Button variant="outline" size="sm">管理題目</Button>
+                          </Link>
+                          <Link href={`/admin/scores/${quiz.id}`}>
+                            <Button variant="outline" size="sm">查看分數</Button>
+                          </Link>
+                          <Link href={`/admin/groups/${quiz.id}`}>
+                            <Button variant="outline" size="sm">管理分組</Button>
                           </Link>
                           <Button variant="outline" size="sm">編輯</Button>
                         </div>
