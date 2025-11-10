@@ -27,13 +27,8 @@ const db = drizzle(pool);
 const defaultAdmins = [
   {
     name: '系統管理員',
-    email: 'admin@example.com',
-    password: 'admin123', // This should be changed in production
-  },
-  {
-    name: '測試管理員',
-    email: 'test@example.com',
-    password: 'test123', // This should be changed in production
+    email: 'admin@5xcampus.com',
+    password: 'Admin123user', // This should be changed in production
   },
 ];
 

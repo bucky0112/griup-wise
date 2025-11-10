@@ -6,6 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
 import Link from 'next/link';
 import { CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+import { db } from '@/lib/db';
+import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
+import { eq, and } from 'drizzle-orm';
 
 interface PageProps {
   params: Promise<{ quizId: string; participantId: string }>;
@@ -47,25 +50,136 @@ interface StudentAnswersData {
   detailed_answers: DetailedAnswer[];
 }
 
-async function fetchStudentAnswers(quizId: string, participantId: string): Promise<StudentAnswersData> {
-  const { cookies } = await import('next/headers');
+async function fetchStudentAnswers(quizId: string, participantId: string, adminId: string): Promise<StudentAnswersData> {
+  // Verify quiz exists and belongs to admin
+  const quiz = await db
+    .select({
+      id: quizzes.id,
+      title: quizzes.title,
+      created_by: quizzes.createdBy,
+    })
+    .from(quizzes)
+    .where(eq(quizzes.id, quizId))
+    .limit(1);
 
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/answers/${quizId}/${participantId}`,
-    {
-      cache: 'no-store',
-      headers: {
-        'Cookie': (await cookies()).toString(),
-      },
-    }
-  );
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.message || 'Failed to fetch student answers');
+  if (quiz.length === 0) {
+    throw new Error('測驗不存在');
   }
 
-  return response.json();
+  if (quiz[0].created_by !== adminId) {
+    throw new Error('無權限查看此測驗');
+  }
+
+  // Verify participant exists and belongs to this quiz
+  const participant = await db
+    .select({
+      id: participants.id,
+      display_name: participants.displayName,
+      student_no: participants.studentNo,
+      quiz_id: participants.quizId,
+      created_at: participants.createdAt,
+    })
+    .from(participants)
+    .where(and(
+      eq(participants.id, participantId),
+      eq(participants.quizId, quizId)
+    ))
+    .limit(1);
+
+  if (participant.length === 0) {
+    throw new Error('參與者不存在或不屬於此測驗');
+  }
+
+  // Check if participant has submitted
+  const submission = await db
+    .select({
+      id: submissions.id,
+      total_score: submissions.totalScore,
+      submitted_at: submissions.submittedAt,
+    })
+    .from(submissions)
+    .where(and(
+      eq(submissions.quizId, quizId),
+      eq(submissions.participantId, participantId)
+    ))
+    .limit(1);
+
+  if (submission.length === 0) {
+    throw new Error('此參與者尚未提交作答');
+  }
+
+  // Get all questions for this quiz (ordered by order_index)
+  const quizQuestions = await db
+    .select({
+      id: questions.id,
+      type: questions.type,
+      prompt: questions.prompt,
+      code_snippet: questions.codeSnippet,
+      code_language: questions.codeLanguage,
+      options: questions.options,
+      answer_key: questions.answerKey,
+      score: questions.score,
+      order_index: questions.orderIndex,
+    })
+    .from(questions)
+    .where(eq(questions.quizId, quizId))
+    .orderBy(questions.orderIndex);
+
+  // Get all answers for this submission
+  const studentAnswers = await db
+    .select({
+      question_id: answers.questionId,
+      response: answers.response,
+      earned_score: answers.earnedScore,
+    })
+    .from(answers)
+    .where(eq(answers.submissionId, submission[0].id));
+
+  // Create a map for quick lookup
+  const answersMap = new Map(
+    studentAnswers.map(answer => [answer.question_id, answer])
+  );
+
+  // Combine questions with student answers
+  const detailedAnswers = quizQuestions.map((question, index) => {
+    const studentAnswer = answersMap.get(question.id);
+
+    return {
+      question_number: index + 1,
+      question: {
+        id: question.id,
+        type: question.type,
+        prompt: question.prompt,
+        code_snippet: question.code_snippet,
+        code_language: question.code_language,
+        options: question.options as string[] | null,
+        correct_answer: question.answer_key as string[] | string | null,
+        max_score: parseFloat(question.score),
+      },
+      student_answer: {
+        response: studentAnswer?.response as string[] | string | number | null || null,
+        earned_score: studentAnswer ? parseFloat(studentAnswer.earned_score) : 0,
+      },
+    };
+  });
+
+  return {
+    quiz: {
+      id: quiz[0].id,
+      title: quiz[0].title,
+    },
+    participant: {
+      id: participant[0].id,
+      display_name: participant[0].display_name,
+      student_no: participant[0].student_no,
+    },
+    submission: {
+      id: submission[0].id,
+      total_score: parseFloat(submission[0].total_score),
+      submitted_at: submission[0].submitted_at.toISOString(),
+    },
+    detailed_answers: detailedAnswers,
+  };
 }
 
 function formatStudentResponse(response: string[] | string | number | null, questionType: string): string {
@@ -137,7 +251,7 @@ export default async function StudentAnswerDetailsPage({ params }: PageProps) {
   let errorMessage: string | null = null;
 
   try {
-    data = await fetchStudentAnswers(quizId, participantId);
+    data = await fetchStudentAnswers(quizId, participantId, session.id);
   } catch (error) {
     errorMessage = error instanceof Error ? error.message : 'Unknown error';
 

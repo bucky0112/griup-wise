@@ -27,7 +27,7 @@ export async function POST() {
     await seedAdmins();
 
     return NextResponse.json({
-      message: '資料庫初始化完成！預設管理員帳號：admin@example.com / admin123',
+      message: '資料庫初始化完成！',
       success: true
     });
 

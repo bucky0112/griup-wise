@@ -3,6 +3,9 @@ import { getSession } from '@/lib/session';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { db } from '@/lib/db';
+import { quizzes, classes, participants, submissions, groupingRuns, groups } from '@/lib/db/schema';
+import { eq, and, count } from 'drizzle-orm';
 
 interface OverviewData {
   statistics: {
@@ -27,24 +30,119 @@ interface OverviewData {
   }>;
 }
 
-async function fetchOverviewData(): Promise<OverviewData> {
-  const { cookies } = await import('next/headers');
+async function fetchOverviewData(adminId: string): Promise<OverviewData> {
+  // Get all quizzes created by this admin with related data
+  const adminQuizzes = await db
+    .select({
+      id: quizzes.id,
+      title: quizzes.title,
+      class_title: classes.title,
+      created_at: quizzes.createdAt,
+      show_group_publicly: quizzes.showGroupPublicly,
+    })
+    .from(quizzes)
+    .innerJoin(classes, eq(quizzes.classId, classes.id))
+    .where(eq(quizzes.createdBy, adminId))
+    .orderBy(quizzes.createdAt);
 
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/admin/groups/overview`,
-    {
-      cache: 'no-store',
-      headers: {
-        'Cookie': (await cookies()).toString(),
-      },
-    }
+  // Get statistics for each quiz
+  const quizData = await Promise.all(
+    adminQuizzes.map(async (quiz) => {
+      // Get participants count
+      const participantsResult = await db
+        .select({ count: count() })
+        .from(participants)
+        .where(eq(participants.quizId, quiz.id));
+
+      const participantsCount = participantsResult[0]?.count || 0;
+
+      // Get submissions count
+      const submissionsResult = await db
+        .select({ count: count() })
+        .from(submissions)
+        .where(eq(submissions.quizId, quiz.id));
+
+      const submissionsCount = submissionsResult[0]?.count || 0;
+
+      // Get active grouping run
+      const activeRun = await db
+        .select({
+          id: groupingRuns.id,
+          created_at: groupingRuns.createdAt,
+          config: groupingRuns.config,
+        })
+        .from(groupingRuns)
+        .where(and(
+          eq(groupingRuns.quizId, quiz.id),
+          eq(groupingRuns.status, 'active')
+        ))
+        .limit(1);
+
+      // Get groups count for active run
+      let groupsCount = 0;
+      let totalMembers = 0;
+      if (activeRun.length > 0) {
+        const groupsResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .where(eq(groups.groupingRunId, activeRun[0].id));
+
+        groupsCount = groupsResult[0]?.count || 0;
+
+        // Get total members in groups
+        const membersResult = await db
+          .select({ count: count() })
+          .from(groups)
+          .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+          .where(and(
+            eq(groupingRuns.quizId, quiz.id),
+            eq(groupingRuns.status, 'active')
+          ));
+
+        totalMembers = membersResult[0]?.count || 0;
+      }
+
+      // Determine grouping status
+      let groupingStatus: 'ungrouped' | 'grouped' | 'public';
+      if (quiz.show_group_publicly) {
+        groupingStatus = 'public';
+      } else if (activeRun.length > 0 && groupsCount > 0) {
+        groupingStatus = 'grouped';
+      } else {
+        groupingStatus = 'ungrouped';
+      }
+
+      return {
+        id: quiz.id,
+        title: quiz.title,
+        class_title: quiz.class_title,
+        created_at: quiz.created_at.toISOString(),
+        grouping_status: groupingStatus,
+        active_run: activeRun.length > 0 ? {
+          id: activeRun[0].id,
+          created_at: activeRun[0].created_at.toISOString(),
+          groups_count: groupsCount,
+          total_members: totalMembers,
+        } : null,
+        participants_count: participantsCount,
+        submissions_count: submissionsCount,
+      };
+    })
   );
 
-  if (!response.ok) {
-    throw new Error('Failed to fetch overview data');
-  }
+  // Calculate overall statistics
+  const totalQuizzes = quizData.length;
+  const groupedQuizzes = quizData.filter(q => q.grouping_status === 'grouped' || q.grouping_status === 'public').length;
+  const publicGroups = quizData.filter(q => q.grouping_status === 'public').length;
 
-  return response.json();
+  return {
+    statistics: {
+      total_quizzes: totalQuizzes,
+      grouped_quizzes: groupedQuizzes,
+      public_groups: publicGroups,
+    },
+    quizzes: quizData,
+  };
 }
 
 function getStatusBadge(status: 'ungrouped' | 'grouped' | 'public') {
@@ -76,7 +174,7 @@ export default async function GroupsOverviewPage() {
 
   let overviewData: OverviewData;
   try {
-    overviewData = await fetchOverviewData();
+    overviewData = await fetchOverviewData(session.id);
   } catch (error) {
     console.error('Error fetching overview:', error);
     return (
