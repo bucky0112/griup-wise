@@ -110,10 +110,6 @@ export default async function AdminDashboard() {
                   <p className="text-gray-600">電子郵件</p>
                   <p className="font-medium">{session.email}</p>
                 </div>
-                <div>
-                  <p className="text-gray-600">管理者 ID</p>
-                  <p className="font-medium text-xs">{session.id}</p>
-                </div>
               </div>
             </CardContent>
           </Card>

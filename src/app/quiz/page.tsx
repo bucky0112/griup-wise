@@ -161,10 +161,19 @@ export default function QuizPage() {
 
   const handleLogout = async () => {
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.push('/login');
+      const response = await fetch('/api/auth/logout', { method: 'POST' });
+
+      if (response.redirected) {
+        // If the server sent a redirect, follow it
+        window.location.href = response.url;
+      } else {
+        // Fallback: redirect to completion page
+        router.push('/quiz/complete');
+      }
     } catch (error) {
       console.error('Logout error:', error);
+      // Fallback on error: redirect to completion page
+      router.push('/quiz/complete');
     }
   };
 
@@ -243,11 +252,6 @@ export default function QuizPage() {
                       提交時間：{new Date(assignmentData.submittedAt).toLocaleString('zh-TW')}
                     </p>
                   )}
-                  <div className="space-y-3">
-                    <Button variant="outline" onClick={() => router.push('/')}>
-                      返回首頁
-                    </Button>
-                  </div>
                 </div>
               </CardContent>
             </Card>

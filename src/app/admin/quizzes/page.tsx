@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { ShareQuizLink } from '@/components/admin/ShareQuizLink';
 
 export default async function QuizzesManagement() {
   const session = await getSession();
@@ -84,6 +85,10 @@ export default async function QuizzesManagement() {
                           </div>
                         </div>
                         <div className="flex flex-wrap gap-2">
+                          <ShareQuizLink
+                            quizId={quiz.id}
+                            quizTitle={quiz.title}
+                          />
                           <Link href={`/admin/quizzes/${quiz.id}/questions`}>
                             <Button variant="outline" size="sm">管理題目</Button>
                           </Link>
