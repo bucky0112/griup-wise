@@ -78,9 +78,33 @@ function DraggableMember({
   };
 
   // Only apply drag attributes and listeners when not in batch mode and hydrated
+  // For SSR compatibility, only show batch mode UI after hydration
   const shouldShowBatchMode = isHydrated && isBatchMode;
-  const dragProps = shouldShowBatchMode ? {} : { ...attributes, ...listeners };
-  const dragStyle = shouldShowBatchMode ? {} : style;
+  const dragProps = shouldShowBatchMode ? {} : (!isHydrated ? {} : { ...attributes, ...listeners });
+  const dragStyle = shouldShowBatchMode ? {} : (!isHydrated ? {} : style);
+
+  // Prevent hydration mismatch by rendering consistent content until hydrated
+  if (!isHydrated) {
+    return (
+      <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg transition-all duration-200 cursor-default">
+        <div className="flex items-center space-x-3">
+          <div className="w-8 h-8 bg-blue-100 text-blue-800 rounded-full flex items-center justify-center text-sm font-medium">
+            {member.rank_index}
+          </div>
+          <div>
+            <div className="font-medium">{member.display_name}</div>
+            <div className="text-sm text-gray-600">{member.student_no}</div>
+          </div>
+        </div>
+        <div className="flex items-center space-x-3">
+          {member.total_score !== null && (
+            <div className="text-sm font-medium">{member.total_score}分</div>
+          )}
+          {getMemberStatusBadge(member)}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

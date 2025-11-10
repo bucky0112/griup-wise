@@ -6,6 +6,7 @@ import { eq } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { Plus } from 'lucide-react';
 import { ShareQuizLink } from '@/components/admin/ShareQuizLink';
 
 export default async function QuizzesManagement() {
@@ -38,6 +39,12 @@ export default async function QuizzesManagement() {
               <p className="text-gray-600">管理您的測驗和題目</p>
             </div>
             <div className="flex space-x-4">
+              <Link href="/admin/quizzes/new">
+                <Button className="flex items-center gap-2">
+                  <Plus className="h-4 w-4" />
+                  建立新測驗
+                </Button>
+              </Link>
               <Link href="/admin">
                 <Button variant="outline">返回後台</Button>
               </Link>
@@ -61,7 +68,9 @@ export default async function QuizzesManagement() {
               {allQuizzes.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-500 mb-4">尚未建立任何測驗</p>
-                  <Button>建立新測驗</Button>
+                  <Link href="/admin/quizzes/new">
+                    <Button>建立新測驗</Button>
+                  </Link>
                 </div>
               ) : (
                 <div className="grid gap-4">
