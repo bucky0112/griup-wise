@@ -106,13 +106,13 @@ export function snakeDistribution(
   }));
 
   // Calculate distribution metadata
-  const groupSizes = groups.map(g => g.length);
+  const actualGroupSizes = groups.map(g => g.length);
   const distribution: DistributionMetadata = {
     totalParticipants: rankedParticipants.length,
     groupCount,
     averageGroupSize: rankedParticipants.length / groupCount,
-    minGroupSize: Math.min(...groupSizes),
-    maxGroupSize: Math.max(...groupSizes),
+    minGroupSize: Math.min(...actualGroupSizes),
+    maxGroupSize: Math.max(...actualGroupSizes),
     strategy: 'snake_by_score',
     configUsed: config,
   };

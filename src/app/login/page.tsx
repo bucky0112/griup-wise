@@ -216,15 +216,6 @@ export default function LoginPage() {
             </CardContent>
           </Card>
         )}
-
-        <div className="mt-4 p-4 bg-gray-100 rounded text-sm">
-          <p className="font-medium">測試用帳號：</p>
-          <p>管理者：admin@example.com / admin123</p>
-          <p>管理者：test@example.com / test123</p>
-          <p className="mt-2 font-medium">測試用測驗代碼：</p>
-          <p className="font-mono text-xs break-all">8f46c07b-1897-49c3-8404-7fe1e2b2e4f9</p>
-          <p className="text-gray-600">測驗名稱：程式設計基礎測驗</p>
-        </div>
       </div>
     </div>
   );
