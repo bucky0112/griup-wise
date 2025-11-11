@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { CodeBlock } from '@/components/ui/code-block';
+import { CodeEditor } from '@/components/ui/code-editor';
 import { Question } from './QuizInterface';
 
 interface QuestionCardProps {
@@ -41,6 +42,18 @@ export default function QuestionCard({
 
   const handleTextInput = (inputValue: string) => {
     onChange(inputValue);
+  };
+
+  const handleShortTextInput = (inputValue: string) => {
+    // Create structured response for short_text questions
+    const response = {
+      type: question.responseFormat === 'code' ? 'code_response' : 'text_response',
+      content: inputValue,
+      ...(question.responseFormat === 'code' && question.expectedLanguage && {
+        language: question.expectedLanguage
+      })
+    };
+    onChange(response);
   };
 
   const handleNumericInput = (inputValue: string) => {
@@ -120,15 +133,33 @@ export default function QuestionCard({
         );
 
       case 'short_text':
-        return (
-          <Textarea
-            value={typeof value === 'string' ? value : ''}
-            onChange={(e) => handleTextInput(e.target.value)}
-            placeholder="請輸入您的答案..."
-            rows={3}
-            className="w-full"
-          />
-        );
+        // Extract current content from structured response
+        const currentContent = (value && typeof value === 'object' && (value as any).content)
+          ? (value as any).content
+          : (typeof value === 'string' ? value : '');
+
+        if (question.responseFormat === 'code') {
+          return (
+            <CodeEditor
+              value={currentContent}
+              onChange={handleShortTextInput}
+              placeholder="請輸入您的程式碼..."
+              language={question.expectedLanguage}
+              rows={8}
+              className="w-full"
+            />
+          );
+        } else {
+          return (
+            <Textarea
+              value={currentContent}
+              onChange={(e) => handleShortTextInput(e.target.value)}
+              placeholder="請輸入您的答案..."
+              rows={4}
+              className="w-full"
+            />
+          );
+        }
 
       case 'numeric':
         return (
@@ -155,7 +186,8 @@ export default function QuestionCard({
       case 'single': return '單選題';
       case 'multiple': return '多選題';
       case 'boolean': return '是非題';
-      case 'short_text': return '簡答題';
+      case 'short_text':
+        return question.responseFormat === 'code' ? '程式碼題' : '問答題';
       case 'numeric': return '數值題';
       default: return '未知題型';
     }
@@ -167,6 +199,13 @@ export default function QuestionCard({
     }
     if (question.type === 'multiple') {
       return Array.isArray(value) && value.length > 0;
+    }
+    if (question.type === 'short_text') {
+      // Handle structured responses
+      if (value && typeof value === 'object' && (value as any).content) {
+        return (value as any).content.trim() !== '';
+      }
+      return typeof value === 'string' && value.trim() !== '';
     }
     return value !== undefined && value !== null && value !== '';
   };

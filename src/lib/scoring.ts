@@ -66,7 +66,25 @@ export function calculateScore(questionType: string, studentAnswer: unknown, cor
       }
       return 0;
 
+    case 'short_text':
+      // Manual review questions should return 0 for auto-scoring
+      return 0;
+
     default:
       return 0;
   }
+}
+
+/**
+ * Get effective score for display and calculation
+ * Uses manual score if available, otherwise falls back to earned score
+ * @param earnedScore - Auto-calculated score
+ * @param manualScore - Manual score from reviewer (can be null)
+ * @returns The effective score to use
+ */
+export function getEffectiveScore(earnedScore: number | string, manualScore: number | string | null): number {
+  if (manualScore !== null && manualScore !== undefined) {
+    return typeof manualScore === 'string' ? parseFloat(manualScore) : manualScore;
+  }
+  return typeof earnedScore === 'string' ? parseFloat(earnedScore) : earnedScore;
 }

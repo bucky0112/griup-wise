@@ -16,17 +16,42 @@ import { Plus, X } from 'lucide-react';
 
 const questionSchema = z.object({
   prompt: z.string().min(1, '請輸入題目內容'),
-  type: z.enum(['single', 'multiple'], {
+  type: z.enum(['single', 'multiple', 'short_text'], {
     message: '請選擇題目類型',
   }),
   score: z.string().min(1, '請輸入分數').refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num > 0;
   }, '分數必須大於 0'),
-  options: z.array(z.string().min(1, '選項不可為空')).min(2, '至少需要 2 個選項'),
-  correctAnswers: z.array(z.string()).min(1, '至少需要選擇一個正確答案'),
+  options: z.array(z.string()).optional(),
+  correctAnswers: z.array(z.string()).optional(),
   codeSnippet: z.string().optional(),
   codeLanguage: z.string().optional(),
+  responseFormat: z.enum(['text', 'code']).optional(),
+  expectedLanguage: z.string().optional(),
+}).refine((data) => {
+  // For choice-based questions, require options and correct answers
+  if (data.type === 'single' || data.type === 'multiple') {
+    if (!data.options || data.options.length < 2) {
+      return false;
+    }
+    // Check that all options are non-empty
+    if (data.options.some(option => !option || option.trim() === '')) {
+      return false;
+    }
+    if (!data.correctAnswers || data.correctAnswers.length === 0) {
+      return false;
+    }
+  }
+  // For code questions, require expected language if responseFormat is 'code'
+  if (data.type === 'short_text' && data.responseFormat === 'code') {
+    if (!data.expectedLanguage || data.expectedLanguage.trim() === '') {
+      return false;
+    }
+  }
+  return true;
+}, {
+  message: '請填寫完整的必要欄位',
 });
 
 type QuestionFormData = z.infer<typeof questionSchema>;
@@ -55,6 +80,8 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
       type: 'single',
       options: ['', ''],
       correctAnswers: [],
+      responseFormat: 'text',
+      expectedLanguage: '',
     },
   });
 
@@ -116,20 +143,33 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
   };
 
   const onSubmit = async (data: QuestionFormData) => {
+    console.log('Form submitted with data:', data);
     setIsSubmitting(true);
 
     try {
+      const payload = {
+        ...data,
+        score: parseFloat(data.score),
+        orderIndex: nextOrderIndex,
+      };
+
+      // For short_text questions, remove options and correctAnswers
+      if (data.type === 'short_text') {
+        delete payload.options;
+        delete payload.correctAnswers;
+      }
+
+      console.log('Sending payload:', payload);
+
       const response = await fetch(`/api/quizzes/${quizId}/questions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          ...data,
-          score: parseFloat(data.score),
-          orderIndex: nextOrderIndex,
-        }),
+        body: JSON.stringify(payload),
       });
+
+      console.log('Response status:', response.status);
 
       if (response.ok) {
         toast.success('題目新增成功');
@@ -143,6 +183,7 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
         }
       } else {
         const errorData = await response.json();
+        console.error('API error:', errorData);
         toast.error(errorData.message || '新增題目失敗');
       }
     } catch (error) {
@@ -154,7 +195,9 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+    <form onSubmit={handleSubmit(onSubmit, (errors) => {
+      console.log('Form validation errors:', errors);
+    })} className="space-y-6">
       {/* Question Prompt */}
       <div>
         <Label htmlFor="prompt">題目內容</Label>
@@ -173,11 +216,20 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
         <Label>題目類型</Label>
         <RadioGroup
           value={questionType}
-          onValueChange={(value: 'single' | 'multiple') => {
+          onValueChange={(value: 'single' | 'multiple' | 'short_text') => {
             setValue('type', value);
-            // Reset correct answers when changing type
+            // Reset form fields when changing type
             setCorrectAnswers([]);
             setValue('correctAnswers', []);
+            if (value === 'short_text') {
+              // Set default response format for short_text and clear options
+              setValue('responseFormat', 'text');
+              setValue('options', undefined);
+              setOptions(['', '']); // Reset state but don't set form value
+            } else {
+              // For choice questions, ensure options are set
+              setValue('options', options);
+            }
           }}
           className="mt-2"
         >
@@ -188,6 +240,10 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="multiple" id="multiple" />
             <Label htmlFor="multiple">多選題</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="short_text" id="short_text" />
+            <Label htmlFor="short_text">問答題</Label>
           </div>
         </RadioGroup>
         {errors.type && (
@@ -221,15 +277,8 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
         >
           <option value="">請選擇程式語言</option>
           <option value="javascript">JavaScript</option>
-          <option value="python">Python</option>
-          <option value="java">Java</option>
-          <option value="cpp">C++</option>
           <option value="html">HTML</option>
           <option value="css">CSS</option>
-          <option value="sql">SQL</option>
-          <option value="typescript">TypeScript</option>
-          <option value="php">PHP</option>
-          <option value="ruby">Ruby</option>
         </select>
         {errors.codeLanguage && (
           <p className="text-sm text-red-500 mt-1">{errors.codeLanguage.message}</p>
@@ -250,7 +299,63 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
         )}
       </div>
 
-      {/* Options */}
+      {/* Short Text Question Fields */}
+      {questionType === 'short_text' && (
+        <>
+          {/* Response Format */}
+          <div>
+            <Label>回答格式</Label>
+            <RadioGroup
+              value={watch('responseFormat') || 'text'}
+              onValueChange={(value: 'text' | 'code') => {
+                setValue('responseFormat', value);
+                if (value === 'text') {
+                  setValue('expectedLanguage', '');
+                }
+              }}
+              className="mt-2"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="text" id="format-text" />
+                <Label htmlFor="format-text">文字回答</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="code" id="format-code" />
+                <Label htmlFor="format-code">程式碼回答</Label>
+              </div>
+            </RadioGroup>
+            {errors.responseFormat && (
+              <p className="text-sm text-red-500 mt-1">{errors.responseFormat.message}</p>
+            )}
+          </div>
+
+          {/* Expected Language (for code responses) */}
+          {watch('responseFormat') === 'code' && (
+            <div>
+              <Label htmlFor="expectedLanguage">預期程式語言</Label>
+              <select
+                id="expectedLanguage"
+                {...register('expectedLanguage')}
+                className="w-full p-2 border border-gray-300 rounded-md mt-1"
+              >
+                <option value="">請選擇預期程式語言</option>
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="cpp">C++</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+              </select>
+              {errors.expectedLanguage && (
+                <p className="text-sm text-red-500 mt-1">{errors.expectedLanguage.message}</p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Options (only for choice-based questions) */}
+      {(questionType === 'single' || questionType === 'multiple') && (
       <div>
         <div className="flex justify-between items-center mb-2">
           <Label>選項</Label>
@@ -323,6 +428,7 @@ export function AddQuestionForm({ quizId, nextOrderIndex, onQuestionAdded }: Add
           <p className="text-sm text-red-500 mt-1">{errors.correctAnswers.message}</p>
         )}
       </div>
+      )}
 
       <Button type="submit" className="w-full" disabled={isSubmitting}>
         {isSubmitting ? '新增中...' : '新增題目'}

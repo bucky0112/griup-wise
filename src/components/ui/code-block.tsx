@@ -15,8 +15,7 @@ export function CodeBlock({ code, language = 'text', className = '' }: CodeBlock
 
   // Supported languages list for security
   const supportedLanguages = [
-    'javascript', 'python', 'java', 'cpp', 'html', 'css', 'sql',
-    'typescript', 'php', 'ruby', 'json', 'xml', 'bash', 'text'
+    'javascript','html', 'css', 'json', 'bash', 'text'
   ];
 
   const validLanguage = supportedLanguages.includes(sanitizedLanguage) ? sanitizedLanguage : 'text';

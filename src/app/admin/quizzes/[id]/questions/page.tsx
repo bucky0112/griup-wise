@@ -284,6 +284,7 @@ export default function QuestionsManagement({ params }: Props) {
                           <span className="inline-flex px-2 py-1 bg-blue-100 text-blue-800 rounded-full mr-2">
                             {question.type === 'single' ? '單選題' :
                              question.type === 'multiple' ? '多選題' :
+                             question.type === 'short_text' ? '簡答題' :
                              question.type}
                           </span>
                           <span>配分：{question.score}</span>

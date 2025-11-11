@@ -16,17 +16,19 @@ import { Plus, X } from 'lucide-react';
 
 const questionSchema = z.object({
   prompt: z.string().min(1, '請輸入題目內容'),
-  type: z.enum(['single', 'multiple'], {
+  type: z.enum(['single', 'multiple', 'short_text'], {
     message: '請選擇題目類型',
   }),
   score: z.string().min(1, '請輸入分數').refine((val) => {
     const num = parseFloat(val);
     return !isNaN(num) && num > 0;
   }, '分數必須大於 0'),
-  options: z.array(z.string().min(1, '選項不可為空')).min(2, '至少需要 2 個選項'),
-  correctAnswers: z.array(z.string()).min(1, '至少需要選擇一個正確答案'),
+  options: z.array(z.string().min(1, '選項不可為空')).min(2, '至少需要 2 個選項').optional(),
+  correctAnswers: z.array(z.string()).min(1, '至少需要選擇一個正確答案').optional(),
   codeSnippet: z.string().optional(),
   codeLanguage: z.string().optional(),
+  responseFormat: z.enum(['text', 'code']).optional(),
+  expectedLanguage: z.string().optional(),
 });
 
 type QuestionFormData = z.infer<typeof questionSchema>;
@@ -34,12 +36,14 @@ type QuestionFormData = z.infer<typeof questionSchema>;
 interface Question {
   id: string;
   prompt: string;
-  type: 'single' | 'multiple';
+  type: 'single' | 'multiple' | 'short_text';
   score: string;
   options: string[] | unknown;
   answerKey: string[] | unknown;
   codeSnippet?: string | null;
   codeLanguage?: string | null;
+  responseFormat?: string | null;
+  expectedLanguage?: string | null;
 }
 
 interface EditQuestionFormProps {
@@ -50,6 +54,10 @@ interface EditQuestionFormProps {
 }
 
 export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQuestionFormProps) {
+  // Handle manual review questions where answerKey is an object
+  const isManualReview = question.answerKey && typeof question.answerKey === 'object' && !Array.isArray(question.answerKey) && (question.answerKey as any).type === 'manual_review';
+  const manualReviewData = isManualReview ? question.answerKey as any : null;
+
   const [options, setOptions] = useState<string[]>(Array.isArray(question.options) ? question.options : ['', '']);
   const [correctAnswers, setCorrectAnswers] = useState<string[]>(Array.isArray(question.answerKey) ? question.answerKey : []);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -70,6 +78,8 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
       correctAnswers: Array.isArray(question.answerKey) ? question.answerKey : [],
       codeSnippet: question.codeSnippet || '',
       codeLanguage: question.codeLanguage || '',
+      responseFormat: question.responseFormat as 'text' | 'code' || undefined,
+      expectedLanguage: question.expectedLanguage || '',
     },
   });
 
@@ -84,7 +94,9 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
     setValue('correctAnswers', answerArray);
     setValue('codeSnippet', question.codeSnippet || '');
     setValue('codeLanguage', question.codeLanguage || '');
-  }, [question, setValue]);
+    setValue('responseFormat', question.responseFormat as 'text' | 'code' || undefined);
+    setValue('expectedLanguage', question.expectedLanguage || '');
+  }, [question, setValue, manualReviewData]);
 
   const addOption = () => {
     const newOptions = [...options, ''];
@@ -191,11 +203,15 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
         <Label>題目類型</Label>
         <RadioGroup
           value={questionType}
-          onValueChange={(value: 'single' | 'multiple') => {
+          onValueChange={(value: 'single' | 'multiple' | 'short_text') => {
             setValue('type', value);
-            // Reset correct answers when changing type
+            // Reset form fields when changing type
             setCorrectAnswers([]);
             setValue('correctAnswers', []);
+            if (value === 'short_text') {
+              // Set default response format for short_text
+              setValue('responseFormat', 'text');
+            }
           }}
           className="mt-2"
         >
@@ -206,6 +222,10 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
           <div className="flex items-center space-x-2">
             <RadioGroupItem value="multiple" id="multiple" />
             <Label htmlFor="multiple">多選題</Label>
+          </div>
+          <div className="flex items-center space-x-2">
+            <RadioGroupItem value="short_text" id="short_text" />
+            <Label htmlFor="short_text">問答題</Label>
           </div>
         </RadioGroup>
         {errors.type && (
@@ -239,15 +259,8 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
         >
           <option value="">請選擇程式語言</option>
           <option value="javascript">JavaScript</option>
-          <option value="python">Python</option>
-          <option value="java">Java</option>
-          <option value="cpp">C++</option>
           <option value="html">HTML</option>
           <option value="css">CSS</option>
-          <option value="sql">SQL</option>
-          <option value="typescript">TypeScript</option>
-          <option value="php">PHP</option>
-          <option value="ruby">Ruby</option>
         </select>
         {errors.codeLanguage && (
           <p className="text-sm text-red-500 mt-1">{errors.codeLanguage.message}</p>
@@ -268,7 +281,64 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
         )}
       </div>
 
-      {/* Options */}
+      {/* Short Text Question Fields */}
+      {questionType === 'short_text' && (
+        <>
+          {/* Response Format */}
+          <div>
+            <Label>回答格式</Label>
+            <RadioGroup
+              value={watch('responseFormat') || 'text'}
+              onValueChange={(value: 'text' | 'code') => {
+                setValue('responseFormat', value);
+                if (value === 'text') {
+                  setValue('expectedLanguage', '');
+                }
+              }}
+              className="mt-2"
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="text" id="format-text" />
+                <Label htmlFor="format-text">文字回答</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="code" id="format-code" />
+                <Label htmlFor="format-code">程式碼回答</Label>
+              </div>
+            </RadioGroup>
+            {errors.responseFormat && (
+              <p className="text-sm text-red-500 mt-1">{errors.responseFormat.message}</p>
+            )}
+          </div>
+
+          {/* Expected Language (for code responses) */}
+          {watch('responseFormat') === 'code' && (
+            <div>
+              <Label htmlFor="expectedLanguage">預期程式語言</Label>
+              <select
+                id="expectedLanguage"
+                {...register('expectedLanguage')}
+                className="w-full p-2 border border-gray-300 rounded-md mt-1"
+              >
+                <option value="">請選擇預期程式語言</option>
+                <option value="javascript">JavaScript</option>
+                <option value="python">Python</option>
+                <option value="java">Java</option>
+                <option value="cpp">C++</option>
+                <option value="html">HTML</option>
+                <option value="css">CSS</option>
+              </select>
+              {errors.expectedLanguage && (
+                <p className="text-sm text-red-500 mt-1">{errors.expectedLanguage.message}</p>
+              )}
+            </div>
+          )}
+
+        </>
+      )}
+
+      {/* Options (only for choice-based questions) */}
+      {(questionType === 'single' || questionType === 'multiple') && (
       <div>
         <div className="flex justify-between items-center mb-2">
           <Label>選項</Label>
@@ -341,6 +411,7 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
           <p className="text-sm text-red-500 mt-1">{errors.correctAnswers.message}</p>
         )}
       </div>
+      )}
 
       <div className="flex space-x-2">
         <Button type="submit" disabled={isSubmitting}>

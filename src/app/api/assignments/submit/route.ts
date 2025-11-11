@@ -87,9 +87,23 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate scores for each question
+    let hasPendingReview = false;
     const scoredAnswers = quizQuestions.map(question => {
       const studentAnswer = studentAnswers[question.id];
       const maxScore = parseFloat(question.score);
+
+      // Handle manual review questions
+      if (question.type === 'short_text') {
+        hasPendingReview = true;
+        return {
+          questionId: question.id,
+          response: studentAnswer,
+          earnedScore: '0', // Pending review
+          reviewStatus: 'pending' as const
+        };
+      }
+
+      // Auto-grade other question types
       const earnedScore = calculateScore(
         question.type,
         studentAnswer,
@@ -100,11 +114,15 @@ export async function POST(request: NextRequest) {
       return {
         questionId: question.id,
         response: studentAnswer,
-        earnedScore: earnedScore.toString()
+        earnedScore: earnedScore.toString(),
+        reviewStatus: 'auto' as const
       };
     });
 
-    const totalScore = scoredAnswers.reduce((sum, answer) => sum + parseFloat(answer.earnedScore), 0);
+    // Only include auto-graded scores in total for now
+    const totalScore = scoredAnswers
+      .filter(answer => answer.reviewStatus === 'auto')
+      .reduce((sum, answer) => sum + parseFloat(answer.earnedScore), 0);
 
     // Use transaction to ensure data consistency
     const result = await db.transaction(async (tx) => {
@@ -125,7 +143,8 @@ export async function POST(request: NextRequest) {
         submissionId,
         questionId: answer.questionId,
         response: answer.response,
-        earnedScore: answer.earnedScore
+        earnedScore: answer.earnedScore,
+        reviewStatus: answer.reviewStatus
       }));
 
       await tx.insert(answers).values(answerRecords);

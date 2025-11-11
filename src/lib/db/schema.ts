@@ -51,6 +51,9 @@ export const questions = pgTable('questions', {
   answerKey: jsonb('answer_key').notNull(), // 正確答案
   score: numeric('score').notNull(), // 題目配分
   orderIndex: integer('order_index').notNull(),
+  responseFormat: text('response_format').$type<'text' | 'code'>(), // 對於 short_text 問題的回答格式
+  expectedLanguage: text('expected_language'), // 程式碼問題的預期語言
+  gradingInstructions: text('grading_instructions'), // 人工評分指導
 }, (table) => ({
   quizOrderIndex: index('question_quiz_order_idx').on(table.quizId, table.orderIndex),
 }));
@@ -86,6 +89,11 @@ export const answers = pgTable('answers', {
   questionId: uuid('question_id').notNull().references(() => questions.id, { onDelete: 'cascade' }),
   response: jsonb('response').notNull(), // 學生答案
   earnedScore: numeric('earned_score').default('0').notNull(),
+  reviewStatus: text('review_status').$type<'auto' | 'pending' | 'reviewed'>().default('auto').notNull(), // 評分狀態
+  reviewedBy: uuid('reviewed_by').references(() => admins.id), // 評分管理者
+  reviewedAt: timestamp('reviewed_at', { withTimezone: true }), // 評分時間
+  reviewFeedback: text('review_feedback'), // 評分回饋
+  manualScore: numeric('manual_score'), // 人工評分，覆蓋 earnedScore
 }, (table) => ({
   submissionQuestionUnique: unique('answers_submission_question_unique').on(table.submissionId, table.questionId),
 }));

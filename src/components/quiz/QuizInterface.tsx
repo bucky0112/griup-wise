@@ -16,6 +16,8 @@ export interface Question {
   options?: string[];
   score: string;
   orderIndex: number;
+  responseFormat?: string;
+  expectedLanguage?: string;
 }
 
 export interface Quiz {
