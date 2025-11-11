@@ -7,9 +7,12 @@ import { CodeBlock } from '@/components/ui/code-block';
 import Link from 'next/link';
 import { CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
 import { AnswerScoringForm } from '@/components/admin/AnswerScoringForm';
+import { getEffectiveScore } from '@/lib/scoring';
 import { db } from '@/lib/db';
 import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
+
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ quizId: string; participantId: string }>;
@@ -476,7 +479,7 @@ export default async function StudentAnswerDetailsPage({ params }: PageProps) {
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-lg font-medium">
-                        {answer.student_answer.earned_score} / {answer.question.max_score}
+                        {getEffectiveScore(answer.student_answer.earned_score, answer.student_answer.manual_score)} / {answer.question.max_score}
                       </div>
                       <div className="text-sm text-gray-500">分數</div>
                     </div>
@@ -614,11 +617,7 @@ export default async function StudentAnswerDetailsPage({ params }: PageProps) {
                           answerId={answer.student_answer.id}
                           questionId={answer.question.id}
                           maxScore={answer.question.max_score}
-                          currentScore={
-                            answer.student_answer.manual_score !== null
-                              ? answer.student_answer.manual_score
-                              : answer.student_answer.earned_score
-                          }
+                          currentScore={getEffectiveScore(answer.student_answer.earned_score, answer.student_answer.manual_score)}
                           currentFeedback={answer.student_answer.review_feedback}
                           reviewStatus={answer.student_answer.review_status}
                         />

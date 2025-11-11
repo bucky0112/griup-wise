@@ -46,12 +46,7 @@ export function calculateScore(questionType: string, studentAnswer: unknown, cor
       return maxScore;
 
     case 'short_text':
-      // Case insensitive, trim whitespace
-      if (correctAnswerArray.length > 0) {
-        const studentText = String(studentAnswer).trim().toLowerCase();
-        const correctText = String(correctAnswerArray[0]).trim().toLowerCase();
-        return studentText === correctText ? maxScore : 0;
-      }
+      // Manual review questions should return 0 for auto-scoring
       return 0;
 
     case 'numeric':
@@ -64,10 +59,6 @@ export function calculateScore(questionType: string, studentAnswer: unknown, cor
         if (isNaN(studentNum) || isNaN(correctNum)) return 0;
         return Math.abs(studentNum - correctNum) <= epsilon ? maxScore : 0;
       }
-      return 0;
-
-    case 'short_text':
-      // Manual review questions should return 0 for auto-scoring
       return 0;
 
     default:

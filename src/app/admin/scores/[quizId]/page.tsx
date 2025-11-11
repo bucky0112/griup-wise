@@ -12,9 +12,12 @@ import {
 } from '@/components/ui/table';
 import Link from 'next/link';
 import { Eye } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/db';
 import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
+
+export const dynamic = 'force-dynamic';
 
 interface PageProps {
   params: Promise<{ quizId: string }>;
@@ -154,6 +157,7 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
   // Get all submissions with scores
   const submissionData = await db
     .select({
+      id: submissions.id,
       participant_id: submissions.participantId,
       total_score: submissions.totalScore,
       submitted_at: submissions.submittedAt,
@@ -198,7 +202,7 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
     // Calculate pending review count for this participant
     let pendingReviewCount = 0;
     if (submission) {
-      const participantAnswers = answersMap.get(submission.participant_id) || [];
+      const participantAnswers = answersMap.get(submission.id) || [];
       pendingReviewCount = participantAnswers.filter(answer => answer.review_status === 'pending').length;
     }
 
@@ -212,7 +216,7 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
       pending_review_count: pendingReviewCount,
       answers_detail: submission ?
         quizQuestions.map(question => {
-          const answer = answersMap.get(submission.participant_id)?.find(a => a.question_id === question.id);
+          const answer = answersMap.get(submission.id)?.find(a => a.question_id === question.id);
           return {
             question_id: question.id,
             earned_score: answer ? parseFloat(answer.earned_score) : 0,
