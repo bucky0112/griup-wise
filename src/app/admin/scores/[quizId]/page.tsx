@@ -34,6 +34,7 @@ interface ScoresData {
     total_score: number | null;
     submitted_at: string | null;
     rank: number | null;
+    pending_review_count: number;
     answers_detail: Array<{
       question_id: string;
       earned_score: number;
@@ -171,13 +172,14 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
       submission_id: answers.submissionId,
       question_id: answers.questionId,
       earned_score: answers.earnedScore,
+      review_status: answers.reviewStatus,
     })
     .from(answers)
     .innerJoin(submissions, eq(answers.submissionId, submissions.id))
     .where(eq(submissions.quizId, quizId));
 
   // Group answers by submission
-  const answersMap = new Map<string, Array<{ question_id: string; earned_score: string }>>();
+  const answersMap = new Map<string, Array<{ question_id: string; earned_score: string; review_status: string }>>();
   allAnswers.forEach(answer => {
     if (!answersMap.has(answer.submission_id)) {
       answersMap.set(answer.submission_id, []);
@@ -185,12 +187,20 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
     answersMap.get(answer.submission_id)!.push({
       question_id: answer.question_id,
       earned_score: answer.earned_score,
+      review_status: answer.review_status,
     });
   });
 
   // Process participants data
   const participantsData = allParticipants.map(participant => {
     const submission = submissionMap.get(participant.id);
+
+    // Calculate pending review count for this participant
+    let pendingReviewCount = 0;
+    if (submission) {
+      const participantAnswers = answersMap.get(submission.participant_id) || [];
+      pendingReviewCount = participantAnswers.filter(answer => answer.review_status === 'pending').length;
+    }
 
     return {
       id: participant.id,
@@ -199,6 +209,7 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
       total_score: submission ? parseFloat(submission.total_score) : null,
       submitted_at: submission ? submission.submitted_at?.toISOString() : null,
       rank: null as number | null, // Will be calculated below
+      pending_review_count: pendingReviewCount,
       answers_detail: submission ?
         quizQuestions.map(question => {
           const answer = answersMap.get(submission.participant_id)?.find(a => a.question_id === question.id);
@@ -445,6 +456,7 @@ export default async function ScoresPage({ params }: PageProps) {
                     <TableHead>學號</TableHead>
                     <TableHead>姓名</TableHead>
                     <TableHead>總分</TableHead>
+                    <TableHead>待評分</TableHead>
                     <TableHead>交卷時間</TableHead>
                     <TableHead>操作</TableHead>
                   </TableRow>
@@ -462,6 +474,15 @@ export default async function ScoresPage({ params }: PageProps) {
                         <span className="text-gray-500 text-sm ml-1">
                           / {quiz.max_possible_score}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {participant.pending_review_count > 0 ? (
+                          <Badge variant="destructive" className="text-xs">
+                            {participant.pending_review_count} 題待評分
+                          </Badge>
+                        ) : (
+                          <span className="text-gray-500 text-xs">無</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-sm text-gray-600">
                         {participant.submitted_at ?
