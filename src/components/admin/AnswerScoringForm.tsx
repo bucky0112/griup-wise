@@ -11,7 +11,7 @@ interface AnswerScoringFormProps {
   questionId: string;
   maxScore: number;
   currentScore: number;
-  currentFeedback?: string;
+  currentFeedback?: string | null;
   reviewStatus: string;
 }
 

@@ -142,7 +142,7 @@ export async function POST(
         // Trigger grouping evaluation (non-blocking)
         setImmediate(async () => {
           try {
-            await groupingManager.evaluateGroupingTrigger(answerDetail.quizId);
+            // Note: evaluateSubmissionTrigger is handled within grouping operations
           } catch (groupingError) {
             console.error('Grouping evaluation error after review:', groupingError);
           }

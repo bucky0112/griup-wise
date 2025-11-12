@@ -73,7 +73,7 @@ export function calculateScore(questionType: string, studentAnswer: unknown, cor
  * @param manualScore - Manual score from reviewer (can be null)
  * @returns The effective score to use
  */
-export function getEffectiveScore(earnedScore: number | string, manualScore: number | string | null): number {
+export function getEffectiveScore(earnedScore: number | string, manualScore: number | string | null | undefined): number {
   if (manualScore !== null && manualScore !== undefined) {
     return typeof manualScore === 'string' ? parseFloat(manualScore) : manualScore;
   }
