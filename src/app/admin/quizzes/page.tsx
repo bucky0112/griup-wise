@@ -107,7 +107,6 @@ export default async function QuizzesManagement() {
                           <Link href={`/admin/groups/${quiz.id}`}>
                             <Button variant="outline" size="sm">管理分組</Button>
                           </Link>
-                          <Button variant="outline" size="sm">編輯</Button>
                         </div>
                       </div>
                     </div>

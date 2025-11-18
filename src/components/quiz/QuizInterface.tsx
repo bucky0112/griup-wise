@@ -50,8 +50,8 @@ export default function QuizInterface({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Calculate progress (considering question types)
-  const answeredQuestions = questions.filter(question => {
+  // Check if all questions are answered (using consistent logic)
+  const isQuestionAnswered = (question: Question): boolean => {
     const answer = answers[question.id];
 
     // For boolean questions, false is a valid answer
@@ -71,7 +71,11 @@ export default function QuizInterface({
 
     // For single choice and text, non-empty string means answered
     return answer !== undefined && answer !== null && answer !== '';
-  });
+  };
+
+  // Calculate progress (considering question types)
+  const answeredQuestions = questions.filter(isQuestionAnswered);
+  const allQuestionsAnswered = answeredQuestions.length === questions.length;
   const progressPercentage = (answeredQuestions.length / questions.length) * 100;
 
   // Generate secure localStorage key based on quiz and participant
@@ -156,27 +160,7 @@ export default function QuizInterface({
 
   // Validate all questions are answered
   const validateAnswers = (): boolean => {
-    const missingAnswers = questions.filter(question => {
-      const answer = answers[question.id];
-
-      // For boolean questions, false is a valid answer
-      if (question.type === 'boolean') {
-        return answer === undefined || answer === null;
-      }
-
-      // For numeric questions, 0 is a valid answer
-      if (question.type === 'numeric') {
-        return answer === undefined || answer === null || answer === '';
-      }
-
-      // For multiple choice, empty array means no selection
-      if (question.type === 'multiple') {
-        return !Array.isArray(answer) || answer.length === 0;
-      }
-
-      // For single choice and text, empty string/null/undefined means no answer
-      return answer === undefined || answer === null || answer === '';
-    });
+    const missingAnswers = questions.filter(question => !isQuestionAnswered(question));
 
     if (missingAnswers.length > 0) {
       toast.error(`請完成所有題目後再提交，還有 ${missingAnswers.length} 題未作答`);
@@ -198,9 +182,16 @@ export default function QuizInterface({
   const handleSubmit = async () => {
     if (!validateAnswers()) return;
 
+    // Double check all questions are answered before final confirmation
+    if (!allQuestionsAnswered) {
+      toast.error('請完成所有題目後再提交');
+      return;
+    }
+
     const confirmed = window.confirm(
       `確定要提交測驗答案嗎？\n\n` +
       `已完成題目：${answeredQuestions.length}/${questions.length}\n` +
+      `總配分：${quiz.totalScore} 分\n` +
       `注意：提交後將無法修改答案。`
     );
 
@@ -286,14 +277,20 @@ export default function QuizInterface({
               <p className="text-lg font-medium mb-2">
                 已完成 {answeredQuestions.length}/{questions.length} 題
               </p>
-              <p className="text-sm text-gray-600">
-                請檢查您的答案，確認後點擊提交按鈕
-              </p>
+              {allQuestionsAnswered ? (
+                <p className="text-sm text-green-600 font-medium">
+                  ✓ 所有題目已完成，請檢查您的答案後點擊提交按鈕
+                </p>
+              ) : (
+                <p className="text-sm text-amber-600 font-medium">
+                  ⚠ 請完成所有題目後才能提交答案
+                </p>
+              )}
             </div>
 
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || answeredQuestions.length === 0}
+              disabled={isSubmitting || !allQuestionsAnswered}
               className="w-full max-w-md"
               size="lg"
             >

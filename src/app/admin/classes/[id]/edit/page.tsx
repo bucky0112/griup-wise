@@ -12,7 +12,7 @@ import { notFound } from 'next/navigation';
 export default async function EditClassPage({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }) {
   const session = await getSession();
 
@@ -20,7 +20,7 @@ export default async function EditClassPage({
     redirect('/login');
   }
 
-  const classId = params.id;
+  const { id: classId } = await params;
 
   // Get class details
   const classData = await db
