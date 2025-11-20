@@ -17,11 +17,9 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-  DragOverEvent,
   DragStartEvent,
 } from '@dnd-kit/core';
 import {
-  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
@@ -40,6 +38,7 @@ interface DraggableMemberProps {
   isSelected?: boolean;
   isHydrated?: boolean;
   onToggleSelection?: () => void;
+  groupId: string; // Add group ID to identify source group
 }
 
 function DraggableMember({
@@ -48,7 +47,8 @@ function DraggableMember({
   isBatchMode = false,
   isSelected = false,
   isHydrated = false,
-  onToggleSelection
+  onToggleSelection,
+  groupId
 }: DraggableMemberProps) {
   const {
     attributes,
@@ -57,7 +57,14 @@ function DraggableMember({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: member.participant_id });
+  } = useSortable({
+    id: member.participant_id,
+    data: {
+      type: 'member',
+      member,
+      sourceGroupId: groupId
+    }
+  });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -157,18 +164,35 @@ function DraggableMember({
 }
 
 // Droppable Group Container Component
-function DroppableGroup({ group, children }: { group: Group; children: React.ReactNode }) {
-  const { setNodeRef, isOver } = useDroppable({ id: group.id });
+function DroppableGroup({ group, children, isDragging }: { group: Group; children: React.ReactNode; isDragging: boolean }) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: group.id,
+    data: {
+      type: 'group',
+      group
+    }
+  });
 
   return (
     <div
       ref={setNodeRef}
       className={`
-        min-h-[100px] transition-all duration-200 rounded-lg
-        ${isOver ? 'bg-blue-50 border-2 border-blue-300 border-dashed' : ''}
+        min-h-[100px] transition-all duration-200 rounded-lg relative
+        ${isDragging ? 'border-2 border-dashed border-gray-300 bg-gray-50' : ''}
+        ${isOver ? 'bg-blue-50 border-2 border-blue-400 border-dashed shadow-lg' : ''}
       `}
     >
       {children}
+      {isDragging && isOver && (
+        <div className="absolute inset-0 flex items-center justify-center bg-blue-50 bg-opacity-90 rounded-lg">
+          <div className="text-blue-600 font-medium flex items-center space-x-2">
+            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" clipRule="evenodd" />
+            </svg>
+            <span>放置到 {group.name}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -408,17 +432,38 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
 
     if (!over) return;
 
+    // Extract drag data
+    const dragData = active.data.current;
+    const dropData = over.data.current;
+
+    // Only handle member movements
+    if (!dragData || dragData.type !== 'member') return;
+
     const memberId = active.id as string;
-    const targetGroupId = over.id as string;
+    const member = dragData.member;
+    const sourceGroupId = dragData.sourceGroupId;
 
-    // Find the member that's being moved
-    const sourceGroup = data.groups.find(g =>
-      g.members.some(m => m.participant_id === memberId)
-    );
+    // Determine target group ID
+    let targetGroupId = over.id as string;
 
-    if (!sourceGroup || sourceGroup.id === targetGroupId) return;
+    // If dropped on a group container
+    if (dropData && dropData.type === 'group') {
+      targetGroupId = dropData.group.id;
+    } else {
+      // If dropped on another member, find which group it belongs to
+      const targetGroup = data.groups.find(g =>
+        g.members.some(m => m.participant_id === over.id)
+      );
+      if (targetGroup) {
+        targetGroupId = targetGroup.id;
+      }
+    }
+
+    // Don't move if it's the same group
+    if (sourceGroupId === targetGroupId) return;
 
     try {
+      setIsLoading(true);
       const response = await fetch(`/api/admin/groups/move-participant`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -434,33 +479,32 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
       }
 
       // Optimistically update the UI
-      const sourceMember = sourceGroup.members.find(m => m.participant_id === memberId);
-      if (sourceMember) {
-        setData(prev => ({
-          ...prev,
-          groups: prev.groups.map(group => {
-            if (group.id === sourceGroup.id) {
-              // Remove from source group
-              return {
-                ...group,
-                members: group.members.filter(m => m.participant_id !== memberId)
-              };
-            } else if (group.id === targetGroupId) {
-              // Add to target group
-              return {
-                ...group,
-                members: [...group.members, sourceMember]
-              };
-            }
-            return group;
-          })
-        }));
-      }
+      setData(prev => ({
+        ...prev,
+        groups: prev.groups.map(group => {
+          if (group.id === sourceGroupId) {
+            // Remove from source group
+            return {
+              ...group,
+              members: group.members.filter(m => m.participant_id !== memberId)
+            };
+          } else if (group.id === targetGroupId) {
+            // Add to target group
+            return {
+              ...group,
+              members: [...group.members, member]
+            };
+          }
+          return group;
+        })
+      }));
 
       toast.success('成功移動學生');
     } catch (error) {
       console.error('Move participant error:', error);
       toast.error(error instanceof Error ? error.message : '移動失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -803,10 +847,10 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
                     {group.members.length} 位成員
                     {group.members.length > 0 && (
                       ` · 平均分數 ${
-                        group.members
+                        (group.members
                           .filter(m => m.total_score !== null)
                           .reduce((sum, m) => sum + m.total_score!, 0) /
-                        group.members.filter(m => m.total_score !== null).length || 0
+                        group.members.filter(m => m.total_score !== null).length || 0).toFixed(1)
                       }`
                     )}
                   </p>
@@ -829,9 +873,14 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
               </div>
             </CardHeader>
             <CardContent>
-              <DroppableGroup group={group}>
+              <DroppableGroup group={group} isDragging={!!activeId}>
                 {group.members.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">此組別暫無成員</p>
+                  <div className="text-gray-500 text-center py-8">
+                    <div className="mb-2">此組別暫無成員</div>
+                    {!!activeId && (
+                      <div className="text-sm text-blue-600">拖拉成員到此處</div>
+                    )}
+                  </div>
                 ) : (
                   <SortableContext
                     items={group.members.map(m => m.participant_id)}
@@ -844,6 +893,7 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
                           <DraggableMember
                             key={member.participant_id}
                             member={member}
+                            groupId={group.id}
                             isActive={activeId === member.participant_id}
                             isBatchMode={isBatchMode}
                             isSelected={selectedParticipants.has(member.participant_id)}
