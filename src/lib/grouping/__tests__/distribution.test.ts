@@ -350,5 +350,98 @@ describe('Snake Distribution', () => {
       expect(result.groups).toHaveLength(1);
       expect(result.groups[0].participants).toHaveLength(1);
     });
+
+    it('prevents oversized groups: 7 participants with target_group_size 4', () => {
+      // This is the specific bug case: 7 participants, target 4 per group
+      // Should create 2 groups (4+3) NOT 1 group (7)
+      const participants: AllParticipants[] = Array.from({ length: 7 }, (_, i) =>
+        createMockParticipant(
+          (i + 1).toString(),
+          `X${(i + 1).toString().padStart(3, '0')}`,
+          100 - i * 10,
+          i + 1
+        )
+      );
+
+      const config = { ...baseConfig, target_group_size: 4 };
+      const result = snakeDistribution(participants, config);
+
+      // Should create 2 groups, not 1
+      expect(result.groups).toHaveLength(2);
+
+      // Verify group sizes - should be 4 and 3 (or 3 and 4)
+      const groupSizes = result.groups.map(g => g.participants.length);
+      groupSizes.sort((a, b) => b - a); // Sort descending
+      expect(groupSizes).toEqual([4, 3]);
+
+      // Verify no group exceeds target_group_size + 1
+      for (const group of result.groups) {
+        expect(group.participants.length).toBeLessThanOrEqual(config.target_group_size + 1);
+      }
+    });
+
+    it('prevents oversized groups: 9 participants with target_group_size 4', () => {
+      const participants: AllParticipants[] = Array.from({ length: 9 }, (_, i) =>
+        createMockParticipant(
+          (i + 1).toString(),
+          `Y${(i + 1).toString().padStart(3, '0')}`,
+          100 - i * 5,
+          i + 1
+        )
+      );
+
+      const config = { ...baseConfig, target_group_size: 4 };
+      const result = snakeDistribution(participants, config);
+
+      // Should create 3 groups (3+3+3) not 2 groups (4+5)
+      expect(result.groups).toHaveLength(3);
+
+      // Verify all groups are size 3
+      const groupSizes = result.groups.map(g => g.participants.length);
+      expect(groupSizes).toEqual([3, 3, 3]);
+
+      // Verify no group exceeds target_group_size + 1
+      for (const group of result.groups) {
+        expect(group.participants.length).toBeLessThanOrEqual(config.target_group_size + 1);
+      }
+    });
+
+    it('handles edge case: 5 participants with target_group_size 4', () => {
+      const participants: AllParticipants[] = Array.from({ length: 5 }, (_, i) =>
+        createMockParticipant(
+          (i + 1).toString(),
+          `Z${(i + 1).toString().padStart(3, '0')}`,
+          100 - i * 8,
+          i + 1
+        )
+      );
+
+      const config = { ...baseConfig, target_group_size: 4 };
+      const result = snakeDistribution(participants, config);
+
+      // Should create 1 group with 5 participants (allowed since 5 <= 4+1)
+      expect(result.groups).toHaveLength(1);
+      expect(result.groups[0].participants.length).toBe(5);
+    });
+
+    it('handles edge case: 6 participants with target_group_size 4', () => {
+      const participants: AllParticipants[] = Array.from({ length: 6 }, (_, i) =>
+        createMockParticipant(
+          (i + 1).toString(),
+          `W${(i + 1).toString().padStart(3, '0')}`,
+          100 - i * 7,
+          i + 1
+        )
+      );
+
+      const config = { ...baseConfig, target_group_size: 4 };
+      const result = snakeDistribution(participants, config);
+
+      // Should create 2 groups (3+3) since 6 participants would exceed target_group_size + 1
+      expect(result.groups).toHaveLength(2);
+
+      const groupSizes = result.groups.map(g => g.participants.length);
+      expect(groupSizes).toEqual([3, 3]);
+    });
   });
 });

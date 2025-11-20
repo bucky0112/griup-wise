@@ -333,8 +333,9 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
         body: JSON.stringify({
           target_group_size: data.run_info.config.target_group_size,
           include_unsubmitted: data.run_info.config.include_unsubmitted,
-          min_groups: data.run_info.config.min_groups,
-          max_groups: data.run_info.config.max_groups,
+          // Don't pass restrictive group constraints to allow optimal grouping
+          // min_groups: data.run_info.config.min_groups,
+          // max_groups: data.run_info.config.max_groups,
           strategy: 'snake_by_score',
         }),
       });

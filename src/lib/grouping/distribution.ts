@@ -136,8 +136,12 @@ function calculateOptimalGrouping(participantCount: number, config: GroupingConf
 
   const candidates = [];
 
+  // Set a reasonable maximum group size to prevent oversized groups
+  // Allow at most target_group_size + 1 to handle small remainders
+  const maxGroupSize = config.target_group_size + 1;
+
   // Test different group counts within reasonable range
-  const minGroups = config.min_groups || 1;
+  const minGroups = config.min_groups || Math.max(1, Math.ceil(participantCount / maxGroupSize));
   const maxGroups = config.max_groups || Math.ceil(participantCount / 2); // Reasonable upper limit
 
   for (let groups = minGroups; groups <= maxGroups; groups++) {
@@ -150,13 +154,27 @@ function calculateOptimalGrouping(participantCount: number, config: GroupingConf
       groupSizes[i]++;
     }
 
+    // Skip configurations where any group exceeds the maximum group size
+    const maxActualSize = Math.max(...groupSizes);
+    if (maxActualSize > maxGroupSize) {
+      continue;
+    }
+
     // Calculate deviations from target
     const deviations = groupSizes.map(size => Math.abs(size - config.target_group_size));
     const maxDeviation = Math.max(...deviations);
     const avgDeviation = deviations.reduce((sum, dev) => sum + dev, 0) / groups;
 
-    // Score: prefer smaller max deviation, then smaller average deviation
-    const score = maxDeviation * 10 + avgDeviation;
+    // Enhanced scoring: heavily penalize oversized groups
+    let score = maxDeviation * 10 + avgDeviation;
+
+    // Additional penalty for groups that exceed target size significantly
+    for (const size of groupSizes) {
+      if (size > config.target_group_size) {
+        const excessPenalty = Math.pow(size - config.target_group_size, 2) * 100;
+        score += excessPenalty;
+      }
+    }
 
     candidates.push({
       groupCount: groups,
@@ -167,7 +185,7 @@ function calculateOptimalGrouping(participantCount: number, config: GroupingConf
     });
   }
 
-  // If no constraints specified, add the simple ceil calculation
+  // If no constraints specified, add the simple ceil calculation (with size limits)
   if (!config.min_groups && !config.max_groups) {
     const simpleGroups = Math.ceil(participantCount / config.target_group_size);
     const baseSize = Math.floor(participantCount / simpleGroups);
@@ -178,18 +196,38 @@ function calculateOptimalGrouping(participantCount: number, config: GroupingConf
       groupSizes[i]++;
     }
 
-    const deviations = groupSizes.map(size => Math.abs(size - config.target_group_size));
-    const maxDeviation = Math.max(...deviations);
-    const avgDeviation = deviations.reduce((sum, dev) => sum + dev, 0) / simpleGroups;
-    const score = maxDeviation * 10 + avgDeviation;
+    // Only add if no groups exceed the maximum size
+    const maxActualSize = Math.max(...groupSizes);
+    if (maxActualSize <= maxGroupSize) {
+      const deviations = groupSizes.map(size => Math.abs(size - config.target_group_size));
+      const maxDeviation = Math.max(...deviations);
+      const avgDeviation = deviations.reduce((sum, dev) => sum + dev, 0) / simpleGroups;
+      let score = maxDeviation * 10 + avgDeviation;
 
-    candidates.push({
-      groupCount: simpleGroups,
-      groupSizes,
-      maxDeviation,
-      avgDeviation,
-      score
-    });
+      // Apply same excess penalty
+      for (const size of groupSizes) {
+        if (size > config.target_group_size) {
+          const excessPenalty = Math.pow(size - config.target_group_size, 2) * 100;
+          score += excessPenalty;
+        }
+      }
+
+      candidates.push({
+        groupCount: simpleGroups,
+        groupSizes,
+        maxDeviation,
+        avgDeviation,
+        score
+      });
+    }
+  }
+
+  // If no valid candidates (shouldn't happen with reasonable inputs), fall back to single group
+  if (candidates.length === 0) {
+    return {
+      groupCount: 1,
+      groupSizes: [participantCount]
+    };
   }
 
   // Find best candidate (lowest score)
