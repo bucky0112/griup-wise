@@ -23,28 +23,28 @@ const pool = new Pool({
 // Create drizzle instance
 const db = drizzle(pool);
 
-const adminPassword = process.env.SEED_ADMIN_PASSWORD;
-if (!adminPassword) {
-  throw new Error(
-    'SEED_ADMIN_PASSWORD environment variable is required. ' +
-    'Run with: SEED_ADMIN_PASSWORD="your-password" pnpm db:seed-admins'
-  );
-}
-
-const defaultAdmins = [
-  {
-    name: '系統管理員',
-    email: 'admin@5xcampus.com',
-    password: adminPassword,
-  },
-];
-
 async function hashPassword(password: string): Promise<string> {
   const saltRounds = 12;
   return bcrypt.hash(password, saltRounds);
 }
 
 async function seedAdmins() {
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      'SEED_ADMIN_PASSWORD environment variable is required. ' +
+      'Run with: SEED_ADMIN_PASSWORD="your-password" pnpm db:seed-admins'
+    );
+  }
+
+  const defaultAdmins = [
+    {
+      name: '系統管理員',
+      email: 'admin@5xcampus.com',
+      password: adminPassword,
+    },
+  ];
+
   console.log('🌱 Starting admin seeding...');
 
   try {
