@@ -54,6 +54,13 @@ The system SHALL NOT replace a quiz's active grouping run through automatic grou
 - **AND** a later submission meets the trigger conditions after the cooldown
 - **THEN** the active run, its groups and their members remain unchanged
 
+#### Scenario: Admin edit racing an automatic regroup is kept
+
+- **WHEN** a submission meets the trigger conditions for a quiz whose active run is automatic
+- **AND** an admin edit marks that run admin-managed after the trigger was evaluated but before the regroup writes
+- **THEN** the active run, its groups and their members remain as the admin left them
+- **AND** the submit response reports `autoGrouping.triggered = false` with the admin-managed reason
+
 #### Scenario: Unadjusted automatic run is refreshed
 
 - **WHEN** the quiz's active grouping run was created by automatic grouping and no admin has changed its membership

@@ -40,6 +40,13 @@ export interface BatchOperationResult {
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
+class AdminManagedGroupingError extends Error {
+  constructor(quizId: string) {
+    super(`Active grouping for quiz ${quizId} is admin-managed`);
+    this.name = 'AdminManagedGroupingError';
+  }
+}
+
 /**
  * Membership edits make an automatic run admin-managed so later submissions no longer replace it.
  * Call it inside the same transaction as the edit.
@@ -112,22 +119,6 @@ export class GroupingManager {
       };
     }
 
-    if (await this.isActiveRunAdminManaged(quizId)) {
-      await recordEvent('skipped_admin_managed');
-      return {
-        success: false,
-        runId: '',
-        groupsCreated: 0,
-        totalMembers: 0,
-        triggerEvaluation: { ...evaluation, shouldTrigger: false, reason: 'Active grouping is admin-managed' },
-        metadata: {
-          strategy: 'snake_by_score',
-          config: validatedConfig,
-          timestamp: new Date(),
-        },
-      };
-    }
-
     let result: GroupingResult;
     try {
       // grouping_runs.created_by must reference an admin, so automatic runs are attributed to the quiz owner
@@ -143,27 +134,28 @@ export class GroupingManager {
 
       result = await this.performGrouping(quizId, validatedConfig, quiz.createdBy, evaluation, 'automatic');
     } catch (error) {
+      if (error instanceof AdminManagedGroupingError) {
+        await recordEvent('skipped_admin_managed');
+        return {
+          success: false,
+          runId: '',
+          groupsCreated: 0,
+          totalMembers: 0,
+          triggerEvaluation: { ...evaluation, shouldTrigger: false, reason: 'Active grouping is admin-managed' },
+          metadata: {
+            strategy: 'snake_by_score',
+            config: validatedConfig,
+            timestamp: new Date(),
+          },
+        };
+      }
+
       await recordEvent('failed');
       throw error;
     }
 
     await recordEvent('succeeded');
     return result;
-  }
-
-  /**
-   * An active run is admin-managed unless it was created automatically and never edited by an admin
-   */
-  private async isActiveRunAdminManaged(quizId: string): Promise<boolean> {
-    const [activeRun] = await db
-      .select({ config: groupingRuns.config })
-      .from(groupingRuns)
-      .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
-      .limit(1);
-
-    if (!activeRun) return false;
-
-    return (activeRun.config as { trigger?: string } | null)?.trigger !== 'automatic';
   }
 
   /**
@@ -470,6 +462,22 @@ export class GroupingManager {
     trigger?: 'automatic'
   ): Promise<GroupingResult> {
     return await db.transaction(async (tx) => {
+      if (trigger === 'automatic') {
+        // Lock the active run so an admin edit cannot commit between this check and the regroup;
+        // edits update the same row through markRunAdminManaged and wait for this transaction.
+        const [activeRun] = await tx
+          .select({ config: groupingRuns.config })
+          .from(groupingRuns)
+          .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
+          .limit(1)
+          .for('update');
+
+        // Runs without trigger "automatic" were created or edited by an admin and must not be replaced
+        if (activeRun && (activeRun.config as { trigger?: string } | null)?.trigger !== 'automatic') {
+          throw new AdminManagedGroupingError(quizId);
+        }
+      }
+
       // Get participants and submissions
       const allParticipants = await tx
         .select({

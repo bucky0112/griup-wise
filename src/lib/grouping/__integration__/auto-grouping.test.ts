@@ -14,11 +14,15 @@ import {
   groupMembers,
 } from '@/lib/db';
 import { GroupingManager, groupingManager } from '@/lib/grouping/manager';
-import { defaultConfigs } from '@/lib/grouping/config';
+import { defaultConfigs, type GroupingConfig } from '@/lib/grouping/config';
 import { truncateTables } from '@/test/db';
 import type { AdminSession } from '@/lib/auth';
 
 let currentSession: AdminSession | null = null;
+
+// performGrouping is private; tests intercept it to simulate failures and concurrent admin edits
+type PerformGrouping = (...args: unknown[]) => Promise<unknown>;
+const managerProto = GroupingManager.prototype as unknown as { performGrouping: PerformGrouping };
 vi.mock('@/lib/session', () => ({
   getSession: async () => currentSession,
 }));
@@ -57,7 +61,7 @@ async function submit(quizId: string, score: number) {
 }
 
 // The submit route calls autoGroup with the medium preset after each submission.
-function autoGroupAfterSubmit(quizId: string, participantId: string, config = defaultConfigs.medium) {
+function autoGroupAfterSubmit(quizId: string, participantId: string, config: GroupingConfig = defaultConfigs.medium) {
   return groupingManager.autoGroup(quizId, participantId, config);
 }
 
@@ -145,7 +149,7 @@ describe('automatic grouping', () => {
       await submit(quizId, 80);
       const p3 = await submit(quizId, 70);
 
-      vi.spyOn(GroupingManager.prototype as never, 'performGrouping').mockRejectedValueOnce(
+      vi.spyOn(managerProto, 'performGrouping').mockRejectedValueOnce(
         new Error('simulated grouping failure')
       );
       await expect(autoGroupAfterSubmit(quizId, p3)).rejects.toThrow('simulated grouping failure');
@@ -258,6 +262,34 @@ describe('automatic grouping', () => {
 
       const [run] = await activeRuns(quizId);
       expect((run.config as Record<string, unknown>).trigger).toBe('manual_adjusted');
+    });
+
+    it('keeps a run that an admin adjusts after the trigger was evaluated', async () => {
+      const { quizId } = await seedQuiz();
+      await submit(quizId, 90);
+      await submit(quizId, 80);
+      const p3 = await submit(quizId, 70);
+      await autoGroupAfterSubmit(quizId, p3);
+      await expireCooldown(quizId);
+
+      // Simulate an admin edit committing between autoGroup's checks and the regroup transaction
+      const original = managerProto.performGrouping;
+      vi.spyOn(managerProto, 'performGrouping').mockImplementationOnce(async function (this: unknown, ...args: unknown[]) {
+        const [run] = await activeRuns(quizId);
+        await db
+          .update(groupingRuns)
+          .set({ config: { ...(run.config as Record<string, unknown>), trigger: 'manual_adjusted' } })
+          .where(eq(groupingRuns.id, run.id));
+        return original.apply(this, args);
+      });
+      const before = await snapshotGrouping(quizId);
+
+      const p4 = await submit(quizId, 60);
+      const result = await autoGroupAfterSubmit(quizId, p4);
+
+      expect(result.success).toBe(false);
+      expect(result.triggerEvaluation?.reason).toBe(ADMIN_MANAGED_REASON);
+      expect(await snapshotGrouping(quizId)).toEqual(before);
     });
 
     it('refreshes an automatic run that no admin has adjusted', async () => {

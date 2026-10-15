@@ -40,6 +40,8 @@ Alternative considered: make `created_by` nullable and treat null as "system". R
 
 A run is admin-managed when `config.trigger` is anything other than `"automatic"`, including absent. This classifies every existing run (none of which carry `trigger`) as admin-managed without a data migration. Membership edits on an automatic run set `config.trigger` to `"manual_adjusted"` in the same transaction as the edit, through one shared helper `markRunAdminManaged(tx, groupId)` that resolves the group's run and updates its config.
 
+The admin-managed check runs inside the regroup transaction and reads the active run with `SELECT ... FOR UPDATE`. `markRunAdminManaged` updates that same row inside the edit's transaction, so an edit and an automatic regroup serialize: an edit that commits first makes the regroup skip, and an edit that arrives during the regroup waits and then fails because its groups were replaced, rather than being silently overwritten. A check before the transaction was rejected after review on 2026-10-15 because an edit could commit between the check and the regroup.
+
 Alternative considered: a new boolean column `admin_managed`. Rejected because it needs a migration while the jsonb config already carries per-run metadata.
 
 ### Record the trigger event after the attempt

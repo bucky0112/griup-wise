@@ -15,6 +15,7 @@
 
 - [x] 4.1 [after: 3.2] Automatic grouping preserves admin-owned groups — per "Mark admin ownership in the run config": before grouping, `autoGroup` reads the active run and, when its `config.trigger` is not `"automatic"`, records `grouping_status: "skipped_admin_managed"` and returns `success: false` with reason `Active grouping is admin-managed`. Verify: "Manually created run is kept" passes with the run seeded through `groupingManager.manualGroup`, asserting run id, group ids and member rows are unchanged.
 - [x] 4.2 [after: 4.1] Add `markRunAdminManaged(tx, groupId)` in `src/lib/grouping/manager.ts` and call it inside the transactions of `moveParticipant`, `swapParticipants`, `batchMove` and the `PATCH` handler in `src/app/api/admin/groups/[groupId]/members/route.ts`, so any membership edit turns an automatic run's `config.trigger` into `"manual_adjusted"`. Verify: "Adjusted automatic run is kept" passes using `groupingManager.moveParticipant`, a separate test asserts the `PATCH` handler path sets `manual_adjusted`, and "Unadjusted automatic run is refreshed" passes with the cooldown event backdated by 6 minutes.
+- [x] 4.3 [after: 4.2] Admin edit racing an automatic regroup is kept: the admin-managed check runs inside the regroup transaction with the active run locked `FOR UPDATE`, replacing the pre-transaction check. Verify: "keeps a run that an admin adjusts after the trigger was evaluated" failed before the change and passes after; `pnpm test` 9 passed.
 
 ## 5. Wrap-up
 
