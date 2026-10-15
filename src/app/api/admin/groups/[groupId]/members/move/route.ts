@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { groupingManager } from '@/lib/grouping/manager';
+import { editFailureStatus, groupingManager } from '@/lib/grouping/manager';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -38,7 +38,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (!result.success) {
       return NextResponse.json(
         { message: result.message },
-        { status: 400 }
+        { status: editFailureStatus(result) }
       );
     }
 

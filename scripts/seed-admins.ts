@@ -23,26 +23,34 @@ const pool = new Pool({
 // Create drizzle instance
 const db = drizzle(pool);
 
-// Default admin accounts to seed
-const defaultAdmins = [
-  {
-    name: '系統管理員',
-    email: 'admin@5xcampus.com',
-    password: 'Admin123user', // This should be changed in production
-  },
-];
-
 async function hashPassword(password: string): Promise<string> {
   const saltRounds = 12;
   return bcrypt.hash(password, saltRounds);
 }
 
 async function seedAdmins() {
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD;
+  if (!adminPassword) {
+    throw new Error(
+      'SEED_ADMIN_PASSWORD environment variable is required. ' +
+      'Run with: SEED_ADMIN_PASSWORD="your-password" pnpm db:seed-admins'
+    );
+  }
+
+  const defaultAdmins = [
+    {
+      name: '系統管理員',
+      email: 'admin@5xcampus.com',
+      password: adminPassword,
+    },
+  ];
+
   console.log('🌱 Starting admin seeding...');
 
   try {
     for (const admin of defaultAdmins) {
-      // Check if admin already exists
+      const passwordHash = await hashPassword(admin.password);
+
       const existingAdmin = await db
         .select()
         .from(admins)
@@ -50,14 +58,14 @@ async function seedAdmins() {
         .limit(1);
 
       if (existingAdmin.length > 0) {
-        console.log(`⚠️  Admin with email ${admin.email} already exists, skipping...`);
+        await db
+          .update(admins)
+          .set({ name: admin.name, passwordHash })
+          .where(eq(admins.email, admin.email));
+        console.log(`🔄 Updated admin: ${admin.name} (${admin.email})`);
         continue;
       }
 
-      // Hash the password
-      const passwordHash = await hashPassword(admin.password);
-
-      // Insert the admin
       const [newAdmin] = await db
         .insert(admins)
         .values({
