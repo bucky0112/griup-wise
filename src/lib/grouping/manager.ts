@@ -1,4 +1,4 @@
-import { db, groupingRuns, groups, groupMembers, participants, submissions } from '../db';
+import { db, groupingRuns, groups, groupMembers, participants, quizzes, submissions } from '../db';
 import { eq, and, desc } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { validateGroupingConfig } from './config';
@@ -38,6 +38,29 @@ export interface BatchOperationResult {
   affectedGroups: number;
 }
 
+type DbExecutor = Pick<typeof db, 'select' | 'update'>;
+
+/**
+ * Membership edits make an automatic run admin-managed so later submissions no longer replace it.
+ * Call it inside the same transaction as the edit.
+ */
+export async function markRunAdminManaged(executor: DbExecutor, groupId: string): Promise<void> {
+  const [run] = await executor
+    .select({ id: groupingRuns.id, config: groupingRuns.config })
+    .from(groups)
+    .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+    .where(eq(groups.id, groupId))
+    .limit(1);
+
+  const config = run?.config as Record<string, unknown> | undefined;
+  if (!run || config?.trigger !== 'automatic') return;
+
+  await executor
+    .update(groupingRuns)
+    .set({ config: { ...config, trigger: 'manual_adjusted' } })
+    .where(eq(groupingRuns.id, run.id));
+}
+
 /**
  * Unified grouping management system
  */
@@ -61,24 +84,20 @@ export class GroupingManager {
       defaultTriggerConfig
     );
 
-    // Record the trigger event
     const oldHash = await this.getCurrentRankingHash(quizId, validatedConfig);
     const newHash = await this.generateNewRankingHash(quizId, validatedConfig);
 
-    await recordGroupingEvent(
-      quizId,
-      evaluation,
-      participantId,
-      oldHash,
-      newHash,
-      {
+    // The event is recorded after the attempt so the cooldown only counts groupings that succeeded
+    const recordEvent = (groupingStatus?: 'succeeded' | 'failed' | 'skipped_admin_managed') =>
+      recordGroupingEvent(quizId, evaluation, participantId, oldHash, newHash, {
         trigger_type: 'automatic',
         config_used: validatedConfig,
-      }
-    );
+        ...(groupingStatus && { grouping_status: groupingStatus }),
+      });
 
     // If trigger evaluation says not to group, return early
     if (!evaluation.shouldTrigger) {
+      await recordEvent();
       return {
         success: false,
         runId: '',
@@ -93,8 +112,58 @@ export class GroupingManager {
       };
     }
 
-    // Perform the actual grouping
-    return await this.performGrouping(quizId, validatedConfig, 'system', evaluation);
+    if (await this.isActiveRunAdminManaged(quizId)) {
+      await recordEvent('skipped_admin_managed');
+      return {
+        success: false,
+        runId: '',
+        groupsCreated: 0,
+        totalMembers: 0,
+        triggerEvaluation: { ...evaluation, shouldTrigger: false, reason: 'Active grouping is admin-managed' },
+        metadata: {
+          strategy: 'snake_by_score',
+          config: validatedConfig,
+          timestamp: new Date(),
+        },
+      };
+    }
+
+    let result: GroupingResult;
+    try {
+      // grouping_runs.created_by must reference an admin, so automatic runs are attributed to the quiz owner
+      const [quiz] = await db
+        .select({ createdBy: quizzes.createdBy })
+        .from(quizzes)
+        .where(eq(quizzes.id, quizId))
+        .limit(1);
+
+      if (!quiz) {
+        throw new Error(`Quiz ${quizId} not found for automatic grouping`);
+      }
+
+      result = await this.performGrouping(quizId, validatedConfig, quiz.createdBy, evaluation, 'automatic');
+    } catch (error) {
+      await recordEvent('failed');
+      throw error;
+    }
+
+    await recordEvent('succeeded');
+    return result;
+  }
+
+  /**
+   * An active run is admin-managed unless it was created automatically and never edited by an admin
+   */
+  private async isActiveRunAdminManaged(quizId: string): Promise<boolean> {
+    const [activeRun] = await db
+      .select({ config: groupingRuns.config })
+      .from(groupingRuns)
+      .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
+      .limit(1);
+
+    if (!activeRun) return false;
+
+    return (activeRun.config as { trigger?: string } | null)?.trigger !== 'automatic';
   }
 
   /**
@@ -184,6 +253,8 @@ export class GroupingManager {
           rankIndex: nextRankIndex,
         });
 
+      await markRunAdminManaged(tx, targetGroupId);
+
       return {
         success: true,
         message: 'Participant moved successfully',
@@ -244,6 +315,8 @@ export class GroupingManager {
         .update(groupMembers)
         .set({ groupId: member1.groupId })
         .where(eq(groupMembers.id, member2.id));
+
+      await markRunAdminManaged(tx, member1.groupId);
 
       return {
         success: true,
@@ -339,6 +412,8 @@ export class GroupingManager {
 
       await tx.insert(groupMembers).values(newMemberships);
 
+      await markRunAdminManaged(tx, targetGroupId);
+
       return {
         success: true,
         message: `Moved ${participantIds.length} participants successfully`,
@@ -391,7 +466,8 @@ export class GroupingManager {
     quizId: string,
     config: GroupingConfig,
     createdBy: string,
-    triggerEvaluation: TriggerEvaluation
+    triggerEvaluation: TriggerEvaluation,
+    trigger?: 'automatic'
   ): Promise<GroupingResult> {
     return await db.transaction(async (tx) => {
       // Get participants and submissions
@@ -491,6 +567,8 @@ export class GroupingManager {
             max_groups: config.max_groups,
             tie_breaker: config.tie_breaker,
             sort_order: config.sort_order,
+            // Runs without a trigger were created by an admin and must not be replaced automatically
+            ...(trigger && { trigger }),
           },
           status: 'active',
         })

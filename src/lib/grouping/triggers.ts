@@ -1,5 +1,5 @@
 import { db, groupingEvents, submissions, participants } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { createDeterministicRanking, generateRankingHash, detectRankingChanges } from './ranking';
 
@@ -223,7 +223,9 @@ async function isInCooldownPeriod(quizId: string, cooldownMinutes: number): Prom
     .where(
       and(
         eq(groupingEvents.quizId, quizId),
-        eq(groupingEvents.shouldTriggerGrouping, true)
+        eq(groupingEvents.shouldTriggerGrouping, true),
+        // Attempts that failed or were skipped did not regroup, so they must not start the cooldown
+        sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', '') not in ('failed', 'skipped_admin_managed')`
       )
     )
     .orderBy(desc(groupingEvents.createdAt))

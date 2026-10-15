@@ -9,6 +9,7 @@ import {
   participants
 } from '@/lib/db/schema';
 import { eq, and, count } from 'drizzle-orm';
+import { markRunAdminManaged } from '@/lib/grouping/manager';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -154,6 +155,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
             participantId: participant_id,
             rankIndex: nextRankIndex,
           });
+
+        await markRunAdminManaged(tx, groupId);
       });
 
       return NextResponse.json({
@@ -165,9 +168,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     } else {
       // Removing from group (making ungrouped)
-      await db
-        .delete(groupMembers)
-        .where(eq(groupMembers.id, memberData[0].id));
+      await db.transaction(async (tx) => {
+        await tx
+          .delete(groupMembers)
+          .where(eq(groupMembers.id, memberData[0].id));
+
+        await markRunAdminManaged(tx, groupId);
+      });
 
       return NextResponse.json({
         message: '組員移除成功',
