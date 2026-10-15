@@ -42,3 +42,4 @@ next-env.d.ts
 
 # Spectra app data
 .spectra/
+docs/spectra/.vector-search.db*
