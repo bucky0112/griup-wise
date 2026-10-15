@@ -28,7 +28,7 @@ export interface GroupingResult {
   };
 }
 
-type EditFailureReason = 'stale_grouping';
+type EditFailureReason = 'stale_grouping' | 'forbidden';
 
 export interface GroupEditResult {
   success: boolean;
@@ -46,15 +46,24 @@ export interface BatchOperationResult {
 }
 
 export const STALE_GROUPING_MESSAGE = '分組已更新，請重新整理後再操作';
+export const FORBIDDEN_GROUP_EDIT_MESSAGE = '無權限操作此分組';
 
-// Member-edit routes answer 409 when a named group is not in the active run. Replaced groups are deleted
-// by the regroup, so a replaced id and an id that never existed look the same and both get 409.
-export function editFailureStatus(result: { reason?: EditFailureReason }): 400 | 409 {
-  return result.reason === 'stale_grouping' ? 409 : 400;
+// Member-edit routes answer 409 when a named group is not in the active run (replaced groups are deleted by the
+// regroup, so a replaced id and one that never existed both get 409) and 403 when the admin does not own the quiz.
+export function editFailureStatus(result: { reason?: EditFailureReason }): 400 | 403 | 409 {
+  if (result.reason === 'stale_grouping') return 409;
+  if (result.reason === 'forbidden') return 403;
+  return 400;
 }
 
-const staleEdit = (): GroupEditResult => ({ success: false, message: STALE_GROUPING_MESSAGE, reason: 'stale_grouping' });
+const editFailure = (reason: EditFailureReason): GroupEditResult => ({
+  success: false,
+  message: reason === 'forbidden' ? FORBIDDEN_GROUP_EDIT_MESSAGE : STALE_GROUPING_MESSAGE,
+  reason,
+});
+const staleEdit = (): GroupEditResult => editFailure('stale_grouping');
 const staleBatch = (): BatchOperationResult => ({ ...staleEdit(), affectedParticipants: 0, affectedGroups: 0 });
+const forbiddenBatch = (): BatchOperationResult => ({ ...editFailure('forbidden'), affectedParticipants: 0, affectedGroups: 0 });
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
@@ -88,6 +97,12 @@ async function quizIdOfParticipants(participantIds: string[]): Promise<string | 
     .where(inArray(participants.id, participantIds));
   const quizIds = new Set(rows.map((row) => row.quizId));
   return rows.length === new Set(participantIds).size && quizIds.size === 1 ? [...quizIds][0] : null;
+}
+
+// Only the admin who created a quiz may edit its groups; the owner never changes, so no lock is needed.
+async function isQuizOwnedBy(quizId: string, adminId: string): Promise<boolean> {
+  const [quiz] = await db.select({ createdBy: quizzes.createdBy }).from(quizzes).where(eq(quizzes.id, quizId)).limit(1);
+  return quiz?.createdBy === adminId;
 }
 
 // Group ids of the quiz's active run; read after lockQuizForGrouping so it cannot change during the edit.
@@ -289,6 +304,9 @@ export class GroupingManager {
     if (!quizId) {
       return { success: false, message: 'Participant not found' };
     }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return editFailure('forbidden');
+    }
 
     return await db.transaction(async (tx) => {
       await lockQuizForGrouping(tx, quizId);
@@ -354,6 +372,9 @@ export class GroupingManager {
     const quizId = await quizIdOfParticipants([participant1Id, participant2Id]);
     if (!quizId) {
       return { success: false, message: 'Both participants must be in groups to swap' };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return editFailure('forbidden');
     }
 
     return await db.transaction(async (tx) => {
@@ -423,6 +444,9 @@ export class GroupingManager {
         affectedParticipants: 0,
         affectedGroups: 0,
       };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return forbiddenBatch();
     }
 
     return await db.transaction(async (tx) => {
