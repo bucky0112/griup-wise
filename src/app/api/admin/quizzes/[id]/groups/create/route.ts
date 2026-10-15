@@ -11,6 +11,7 @@ import {
 } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
+import { lockQuizForGrouping } from '@/lib/grouping/quiz-lock';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -177,6 +178,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     // Use transaction to ensure data consistency
     const result = await db.transaction(async (tx) => {
+      await lockQuizForGrouping(tx, quizId);
+
       // Archive any existing active runs
       await tx
         .update(groupingRuns)

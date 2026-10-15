@@ -1,5 +1,5 @@
-import { db, groupingRuns, groups, groupMembers, participants, submissions } from '../db';
-import { eq, and, desc } from 'drizzle-orm';
+import { db, groupingRuns, groups, groupMembers, participants, quizzes, submissions } from '../db';
+import { eq, and, count, desc, gt, inArray, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { validateGroupingConfig } from './config';
 import { createDeterministicRanking, generateRankingHash } from './ranking';
@@ -8,9 +8,12 @@ import {
   evaluateSubmissionTrigger,
   recordGroupingEvent,
   triggerManualGrouping,
+  manualTriggerEvaluation,
+  cooldownStartSql,
   defaultTriggerConfig,
   type TriggerEvaluation,
 } from './triggers';
+import { lockQuizForGrouping } from './quiz-lock';
 
 export interface GroupingResult {
   success: boolean;
@@ -25,10 +28,13 @@ export interface GroupingResult {
   };
 }
 
+type EditFailureReason = 'stale_grouping' | 'forbidden';
+
 export interface GroupEditResult {
   success: boolean;
   message: string;
   changedGroups?: string[];
+  reason?: EditFailureReason;
 }
 
 export interface BatchOperationResult {
@@ -36,6 +42,127 @@ export interface BatchOperationResult {
   message: string;
   affectedParticipants: number;
   affectedGroups: number;
+  reason?: EditFailureReason;
+}
+
+export const STALE_GROUPING_MESSAGE = '分組已更新，請重新整理後再操作';
+export const FORBIDDEN_GROUP_EDIT_MESSAGE = '無權限操作此分組';
+
+// Member-edit routes answer 409 when a named group is not in the active run (replaced groups are deleted by the
+// regroup, so a replaced id and one that never existed both get 409) and 403 when the admin does not own the quiz.
+export function editFailureStatus(result: { reason?: EditFailureReason }): 400 | 403 | 409 {
+  if (result.reason === 'stale_grouping') return 409;
+  if (result.reason === 'forbidden') return 403;
+  return 400;
+}
+
+const editFailure = (reason: EditFailureReason): GroupEditResult => ({
+  success: false,
+  message: reason === 'forbidden' ? FORBIDDEN_GROUP_EDIT_MESSAGE : STALE_GROUPING_MESSAGE,
+  reason,
+});
+const staleEdit = (): GroupEditResult => editFailure('stale_grouping');
+const staleBatch = (): BatchOperationResult => ({ ...staleEdit(), affectedParticipants: 0, affectedGroups: 0 });
+const forbiddenBatch = (): BatchOperationResult => ({ ...editFailure('forbidden'), affectedParticipants: 0, affectedGroups: 0 });
+
+type DbExecutor = Pick<typeof db, 'select' | 'update'>;
+
+const ADMIN_MANAGED_REASON = 'Active grouping is admin-managed';
+const COOLDOWN_REASON = `In cooldown period (${defaultTriggerConfig.cooldownMinutes} minutes)`;
+
+type SkippedStatus = 'skipped_admin_managed' | 'skipped_cooldown';
+
+// Raised inside the locked regroup transaction when the regroup must not run; nothing has been written yet.
+class GroupingSkippedError extends Error {
+  constructor(readonly status: SkippedStatus, readonly reason: string) {
+    super(reason);
+    this.name = 'GroupingSkippedError';
+  }
+}
+
+// Grouping events are an audit trail; a failure to write one is logged instead of masking the real outcome.
+async function recordEventSafely(write: () => Promise<unknown>): Promise<void> {
+  try {
+    await write();
+  } catch (error) {
+    console.error('Failed to record grouping event:', error);
+  }
+}
+
+// A participant's quiz never changes, so it can be read before the transaction to know which quiz to lock.
+async function quizIdOfParticipants(participantIds: string[]): Promise<string | null> {
+  const rows = await db
+    .select({ quizId: participants.quizId })
+    .from(participants)
+    .where(inArray(participants.id, participantIds));
+  const quizIds = new Set(rows.map((row) => row.quizId));
+  return rows.length === new Set(participantIds).size && quizIds.size === 1 ? [...quizIds][0] : null;
+}
+
+// Only the admin who created a quiz may edit its groups; the owner never changes, so no lock is needed.
+async function isQuizOwnedBy(quizId: string, adminId: string): Promise<boolean> {
+  const [quiz] = await db.select({ createdBy: quizzes.createdBy }).from(quizzes).where(eq(quizzes.id, quizId)).limit(1);
+  return quiz?.createdBy === adminId;
+}
+
+// Group ids of the quiz's active run; read after lockQuizForGrouping so it cannot change during the edit.
+export async function activeGroupIds(executor: DbExecutor, quizId: string): Promise<Set<string>> {
+  const rows = await executor
+    .select({ id: groups.id })
+    .from(groups)
+    .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+    .where(and(eq(groups.quizId, quizId), eq(groupingRuns.status, 'active')));
+  return new Set(rows.map((row) => row.id));
+}
+
+// A run is admin-managed unless it was created automatically and never edited by an admin.
+function isAutomaticRun(config: unknown): boolean {
+  return (config as { trigger?: string } | null)?.trigger === 'automatic';
+}
+
+async function isActiveRunAdminManaged(executor: DbExecutor, quizId: string): Promise<boolean> {
+  const [activeRun] = await executor
+    .select({ config: groupingRuns.config })
+    .from(groupingRuns)
+    .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
+    .limit(1);
+  return !!activeRun && !isAutomaticRun(activeRun.config);
+}
+
+function skippedResult(evaluation: TriggerEvaluation, config: GroupingConfig): GroupingResult {
+  return {
+    success: false,
+    runId: '',
+    groupsCreated: 0,
+    totalMembers: 0,
+    triggerEvaluation: evaluation,
+    metadata: {
+      strategy: 'snake_by_score',
+      config,
+      timestamp: new Date(),
+    },
+  };
+}
+
+/**
+ * Membership edits make an automatic run admin-managed so later submissions no longer replace it.
+ * Call it inside the same transaction as the edit.
+ */
+export async function markRunAdminManaged(executor: DbExecutor, groupId: string): Promise<void> {
+  const [run] = await executor
+    .select({ id: groupingRuns.id, config: groupingRuns.config })
+    .from(groups)
+    .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+    .where(eq(groups.id, groupId))
+    .limit(1);
+
+  if (!run || !isAutomaticRun(run.config)) return;
+  const config = run.config as Record<string, unknown>;
+
+  await executor
+    .update(groupingRuns)
+    .set({ config: { ...config, trigger: 'manual_adjusted' } })
+    .where(eq(groupingRuns.id, run.id));
 }
 
 /**
@@ -53,6 +180,46 @@ export class GroupingManager {
     // Validate configuration
     const validatedConfig = validateGroupingConfig(config);
 
+    // Every outcome is logged after the attempt. Skips are non-triggering and carry no ranking hash, and a failed
+    // log write never changes the outcome the submission reports.
+    const record = (
+      evaluation: TriggerEvaluation,
+      groupingStatus?: 'succeeded' | 'failed' | SkippedStatus,
+      rankingHash?: string
+    ) =>
+      recordEventSafely(() =>
+        recordGroupingEvent(quizId, evaluation, participantId, rankingHash, rankingHash, {
+          trigger_type: 'automatic',
+          config_used: validatedConfig,
+          ...(groupingStatus && { grouping_status: groupingStatus }),
+        })
+      );
+    const skip = async (evaluation: TriggerEvaluation, groupingStatus?: SkippedStatus) => {
+      const skipped = { ...evaluation, shouldTrigger: false };
+      await record(skipped, groupingStatus);
+      return skippedResult(skipped, validatedConfig);
+    };
+
+    // Admin-managed quizzes are never regrouped automatically, so skip before any ranking work.
+    // The locked check in performGrouping still catches runs that become admin-managed after this read.
+    if (await isActiveRunAdminManaged(db, quizId)) {
+      const [{ submittedCount }] = await db
+        .select({ submittedCount: count() })
+        .from(submissions)
+        .where(eq(submissions.quizId, quizId));
+      return skip(
+        {
+          shouldTrigger: false,
+          reason: ADMIN_MANAGED_REASON,
+          eventType: 'submission',
+          participantCount: submittedCount,
+          rankingChanged: false,
+          inCooldown: false,
+        },
+        'skipped_admin_managed'
+      );
+    }
+
     // Evaluate if grouping should be triggered
     const evaluation = await evaluateSubmissionTrigger(
       quizId,
@@ -61,40 +228,40 @@ export class GroupingManager {
       defaultTriggerConfig
     );
 
-    // Record the trigger event
-    const oldHash = await this.getCurrentRankingHash(quizId, validatedConfig);
-    const newHash = await this.generateNewRankingHash(quizId, validatedConfig);
-
-    await recordGroupingEvent(
-      quizId,
-      evaluation,
-      participantId,
-      oldHash,
-      newHash,
-      {
-        trigger_type: 'automatic',
-        config_used: validatedConfig,
-      }
-    );
-
-    // If trigger evaluation says not to group, return early
     if (!evaluation.shouldTrigger) {
-      return {
-        success: false,
-        runId: '',
-        groupsCreated: 0,
-        totalMembers: 0,
-        triggerEvaluation: evaluation,
-        metadata: {
-          strategy: 'snake_by_score',
-          config: validatedConfig,
-          timestamp: new Date(),
-        },
-      };
+      return skip(evaluation);
     }
 
-    // Perform the actual grouping
-    return await this.performGrouping(quizId, validatedConfig, 'system', evaluation);
+    // Only a succeeded event stores the ranking hash, so compute it only when a regroup will be attempted.
+    // The submission is already committed, so the current ranking is both the previous and the new state.
+    const rankingHash = await this.getCurrentRankingHash(quizId, validatedConfig);
+
+    let result: GroupingResult;
+    try {
+      // grouping_runs.created_by must reference an admin, so automatic runs are attributed to the quiz owner
+      const [quiz] = await db
+        .select({ createdBy: quizzes.createdBy })
+        .from(quizzes)
+        .where(eq(quizzes.id, quizId))
+        .limit(1);
+
+      if (!quiz) {
+        throw new Error(`Quiz ${quizId} not found for automatic grouping`);
+      }
+
+      result = await this.performGrouping(quizId, validatedConfig, quiz.createdBy, evaluation, 'automatic');
+    } catch (error) {
+      if (error instanceof GroupingSkippedError) {
+        return skip({ ...evaluation, reason: error.reason }, error.status);
+      }
+
+      await record(evaluation, 'failed');
+      throw error;
+    }
+
+    // The regroup is committed; failing to log it must not turn the result into a failure
+    await record(evaluation, 'succeeded', rankingHash);
+    return result;
   }
 
   /**
@@ -107,11 +274,19 @@ export class GroupingManager {
     reason: string = 'Manual admin trigger'
   ): Promise<GroupingResult> {
     const validatedConfig = validateGroupingConfig(config);
+    const evaluation = manualTriggerEvaluation(reason);
 
-    // Always trigger manual grouping
-    const evaluation = await triggerManualGrouping(quizId, adminId, reason);
+    // Recorded after the attempt so a failed admin grouping does not start the automatic cooldown
+    let result: GroupingResult;
+    try {
+      result = await this.performGrouping(quizId, validatedConfig, adminId, evaluation);
+    } catch (error) {
+      await recordEventSafely(() => triggerManualGrouping(quizId, adminId, reason, 'failed'));
+      throw error;
+    }
 
-    return await this.performGrouping(quizId, validatedConfig, adminId, evaluation);
+    await recordEventSafely(() => triggerManualGrouping(quizId, adminId, reason, 'succeeded'));
+    return result;
   }
 
   /**
@@ -122,46 +297,35 @@ export class GroupingManager {
     targetGroupId: string,
     adminId: string
   ): Promise<GroupEditResult> {
+    const quizId = await quizIdOfParticipants([participantId]);
+    if (!quizId) {
+      return { success: false, message: 'Participant not found' };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return editFailure('forbidden');
+    }
+
     return await db.transaction(async (tx) => {
-      // Get current group membership
-      const currentMember = await tx
-        .select({
-          id: groupMembers.id,
-          groupId: groupMembers.groupId,
-          participantId: groupMembers.participantId,
-          rankIndex: groupMembers.rankIndex,
-        })
+      await lockQuizForGrouping(tx, quizId);
+      const groupIds = await activeGroupIds(tx, quizId);
+
+      // Ids read before an automatic regroup point at replaced groups; refuse instead of editing them
+      if (!groupIds.has(targetGroupId)) {
+        return staleEdit();
+      }
+
+      // Memberships in archived runs are history; without an active one the participant is ungrouped
+      const memberships = await tx
+        .select({ id: groupMembers.id, groupId: groupMembers.groupId })
         .from(groupMembers)
-        .where(eq(groupMembers.participantId, participantId))
-        .limit(1);
+        .where(eq(groupMembers.participantId, participantId));
+      const currentMember = memberships.find((membership) => groupIds.has(membership.groupId));
 
-      if (currentMember.length === 0) {
-        return {
-          success: false,
-          message: 'Participant not found in any group',
-        };
+      if (currentMember) {
+        await tx
+          .delete(groupMembers)
+          .where(eq(groupMembers.id, currentMember.id));
       }
-
-      const oldGroupId = currentMember[0].groupId;
-
-      // Check if target group exists
-      const targetGroup = await tx
-        .select({ id: groups.id })
-        .from(groups)
-        .where(eq(groups.id, targetGroupId))
-        .limit(1);
-
-      if (targetGroup.length === 0) {
-        return {
-          success: false,
-          message: 'Target group not found',
-        };
-      }
-
-      // Remove from current group
-      await tx
-        .delete(groupMembers)
-        .where(eq(groupMembers.id, currentMember[0].id));
 
       // Get next rank index for target group
       const targetGroupMembers = await tx
@@ -184,10 +348,12 @@ export class GroupingManager {
           rankIndex: nextRankIndex,
         });
 
+      await markRunAdminManaged(tx, targetGroupId);
+
       return {
         success: true,
         message: 'Participant moved successfully',
-        changedGroups: [oldGroupId, targetGroupId],
+        changedGroups: currentMember ? [currentMember.groupId, targetGroupId] : [targetGroupId],
       };
     });
   }
@@ -200,39 +366,31 @@ export class GroupingManager {
     participant2Id: string,
     adminId: string
   ): Promise<GroupEditResult> {
+    const quizId = await quizIdOfParticipants([participant1Id, participant2Id]);
+    if (!quizId) {
+      return { success: false, message: 'Both participants must be in groups to swap' };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return editFailure('forbidden');
+    }
+
     return await db.transaction(async (tx) => {
-      // Get both participants' current group memberships
-      const member1Query = await tx
-        .select({
-          id: groupMembers.id,
-          groupId: groupMembers.groupId,
-          participantId: groupMembers.participantId,
-          rankIndex: groupMembers.rankIndex,
-        })
+      await lockQuizForGrouping(tx, quizId);
+      const groupIds = await activeGroupIds(tx, quizId);
+
+      const memberships = await tx
+        .select({ id: groupMembers.id, groupId: groupMembers.groupId, participantId: groupMembers.participantId })
         .from(groupMembers)
-        .where(eq(groupMembers.participantId, participant1Id));
+        .where(inArray(groupMembers.participantId, [participant1Id, participant2Id]));
+      const activeMemberOf = (participantId: string) =>
+        memberships.find((m) => m.participantId === participantId && groupIds.has(m.groupId));
 
-      const member2Query = await tx
-        .select({
-          id: groupMembers.id,
-          groupId: groupMembers.groupId,
-          participantId: groupMembers.participantId,
-          rankIndex: groupMembers.rankIndex,
-        })
-        .from(groupMembers)
-        .where(eq(groupMembers.participantId, participant2Id));
+      const member1 = activeMemberOf(participant1Id);
+      const member2 = activeMemberOf(participant2Id);
 
-      const members = [...member1Query, ...member2Query];
-
-      if (members.length !== 2) {
-        return {
-          success: false,
-          message: 'Both participants must be in groups to swap',
-        };
+      if (!member1 || !member2) {
+        return { success: false, message: 'Both participants must be in groups to swap' };
       }
-
-      const member1 = members.find(m => m.participantId === participant1Id)!;
-      const member2 = members.find(m => m.participantId === participant2Id)!;
 
       // Update group memberships (swap groups but keep rank indices)
       await tx
@@ -244,6 +402,8 @@ export class GroupingManager {
         .update(groupMembers)
         .set({ groupId: member1.groupId })
         .where(eq(groupMembers.id, member2.id));
+
+      await markRunAdminManaged(tx, member1.groupId);
 
       return {
         success: true,
@@ -257,10 +417,13 @@ export class GroupingManager {
    * Batch move participants to a target group
    */
   async batchMove(
-    participantIds: string[],
+    requestedParticipantIds: string[],
     targetGroupId: string,
     adminId: string
   ): Promise<BatchOperationResult> {
+    // Duplicate ids would otherwise insert duplicate memberships
+    const participantIds = [...new Set(requestedParticipantIds)];
+
     if (participantIds.length === 0) {
       return {
         success: false,
@@ -270,52 +433,40 @@ export class GroupingManager {
       };
     }
 
+    const quizId = await quizIdOfParticipants(participantIds);
+    if (!quizId) {
+      return {
+        success: false,
+        message: 'Participants must belong to one quiz',
+        affectedParticipants: 0,
+        affectedGroups: 0,
+      };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return forbiddenBatch();
+    }
+
     return await db.transaction(async (tx) => {
-      // Check target group exists
-      const targetGroup = await tx
-        .select({ id: groups.id })
-        .from(groups)
-        .where(eq(groups.id, targetGroupId))
-        .limit(1);
+      await lockQuizForGrouping(tx, quizId);
+      const groupIds = await activeGroupIds(tx, quizId);
 
-      if (targetGroup.length === 0) {
-        return {
-          success: false,
-          message: 'Target group not found',
-          affectedParticipants: 0,
-          affectedGroups: 0,
-        };
+      if (!groupIds.has(targetGroupId)) {
+        return staleBatch();
       }
 
-      // Get current memberships for all participants
-      let currentMembers = [];
-      for (const participantId of participantIds) {
-        const memberQuery = await tx
-          .select({
-            id: groupMembers.id,
-            groupId: groupMembers.groupId,
-            participantId: groupMembers.participantId,
-          })
-          .from(groupMembers)
-          .where(eq(groupMembers.participantId, participantId));
+      // Only memberships in the active run are moved; older runs keep their history
+      const currentMembers = (await tx
+        .select({ id: groupMembers.id, groupId: groupMembers.groupId })
+        .from(groupMembers)
+        .where(inArray(groupMembers.participantId, participantIds)))
+        .filter((membership) => groupIds.has(membership.groupId));
 
-        currentMembers.push(...memberQuery);
-      }
+      const sourceGroups = Array.from(new Set(currentMembers.map(m => m.groupId)));
 
-      const sourceGroupsSet = new Set(currentMembers.map(m => m.groupId));
-      const sourceGroups = Array.from(sourceGroupsSet);
-
-      // Remove from current groups
       if (currentMembers.length > 0) {
         await tx
           .delete(groupMembers)
-          .where(eq(groupMembers.id, currentMembers[0].id));
-
-        for (let i = 1; i < currentMembers.length; i++) {
-          await tx
-            .delete(groupMembers)
-            .where(eq(groupMembers.id, currentMembers[i].id));
-        }
+          .where(inArray(groupMembers.id, currentMembers.map(m => m.id)));
       }
 
       // Get next rank index for target group
@@ -338,6 +489,8 @@ export class GroupingManager {
       }));
 
       await tx.insert(groupMembers).values(newMemberships);
+
+      await markRunAdminManaged(tx, targetGroupId);
 
       return {
         success: true,
@@ -391,9 +544,34 @@ export class GroupingManager {
     quizId: string,
     config: GroupingConfig,
     createdBy: string,
-    triggerEvaluation: TriggerEvaluation
+    triggerEvaluation: TriggerEvaluation,
+    trigger?: 'automatic'
   ): Promise<GroupingResult> {
     return await db.transaction(async (tx) => {
+      await lockQuizForGrouping(tx, quizId);
+
+      if (trigger === 'automatic') {
+        // Read under the quiz lock, so no admin edit can commit between this check and the regroup
+        if (await isActiveRunAdminManaged(tx, quizId)) {
+          throw new GroupingSkippedError('skipped_admin_managed', ADMIN_MANAGED_REASON);
+        }
+
+        // Submissions that passed the event-based cooldown while another regroup was running see its run here
+        const [recentAutomaticRun] = await tx
+          .select({ id: groupingRuns.id })
+          .from(groupingRuns)
+          .where(and(
+            eq(groupingRuns.quizId, quizId),
+            gt(groupingRuns.createdAt, cooldownStartSql(defaultTriggerConfig.cooldownMinutes)),
+            sql`${groupingRuns.config}->>'trigger' = 'automatic'`
+          ))
+          .limit(1);
+
+        if (recentAutomaticRun) {
+          throw new GroupingSkippedError('skipped_cooldown', COOLDOWN_REASON);
+        }
+      }
+
       // Get participants and submissions
       const allParticipants = await tx
         .select({
@@ -491,6 +669,8 @@ export class GroupingManager {
             max_groups: config.max_groups,
             tie_breaker: config.tie_breaker,
             sort_order: config.sort_order,
+            // Runs without a trigger were created by an admin and must not be replaced automatically
+            ...(trigger && { trigger }),
           },
           status: 'active',
         })
@@ -594,16 +774,6 @@ export class GroupingManager {
       console.error('Error generating current ranking hash:', error);
       return undefined;
     }
-  }
-
-  private async generateNewRankingHash(
-    quizId: string,
-    config: GroupingConfig
-  ): Promise<string> {
-    // This is the same as getCurrentRankingHash since we want the "new" state
-    // In practice, this would be called after a new submission is added
-    const hash = await this.getCurrentRankingHash(quizId, config);
-    return hash || 'unknown_hash';
   }
 }
 
