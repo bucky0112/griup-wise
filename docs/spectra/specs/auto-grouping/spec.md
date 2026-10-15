@@ -27,9 +27,8 @@ When a student submission triggers automatic grouping, the system SHALL create t
 source: fix-auto-grouping-failure
 updated: 2026-10-15
 code:
-  - IMPLEMENTATION_PLAN.md
-  - FEATURES.md
-  - temp_add_form.txt
+  - src/lib/grouping/manager.ts
+  - src/lib/grouping/__integration__/auto-grouping.test.ts
 -->
 
 ---
@@ -54,9 +53,9 @@ The system SHALL start the automatic-grouping cooldown only when an automatic gr
 source: fix-auto-grouping-failure
 updated: 2026-10-15
 code:
-  - IMPLEMENTATION_PLAN.md
-  - FEATURES.md
-  - temp_add_form.txt
+  - src/lib/grouping/manager.ts
+  - src/lib/grouping/triggers.ts
+  - src/lib/grouping/__integration__/auto-grouping.test.ts
 -->
 
 ---
@@ -95,7 +94,7 @@ The system SHALL NOT replace a quiz's active grouping run through automatic grou
 source: fix-auto-grouping-failure
 updated: 2026-10-15
 code:
-  - IMPLEMENTATION_PLAN.md
-  - FEATURES.md
-  - temp_add_form.txt
+  - src/lib/grouping/manager.ts
+  - src/app/api/admin/groups/[groupId]/members/route.ts
+  - src/lib/grouping/__integration__/auto-grouping.test.ts
 -->
