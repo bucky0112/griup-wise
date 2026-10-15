@@ -1,5 +1,5 @@
 import { db, groupingEvents, submissions, participants } from '../db';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, gt, isNotNull, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { createDeterministicRanking, generateRankingHash, detectRankingChanges } from './ranking';
 
@@ -100,10 +100,11 @@ export async function evaluateSubmissionTrigger(
   const currentHash = generateRankingHash(currentRanking);
 
   // Get the previous ranking hash from the last event
+  // Compare against the last applied ranking; skipped and failed events carry no hash
   const lastEvent = await db
     .select()
     .from(groupingEvents)
-    .where(eq(groupingEvents.quizId, quizId))
+    .where(and(eq(groupingEvents.quizId, quizId), isNotNull(groupingEvents.newRankingHash)))
     .orderBy(desc(groupingEvents.createdAt))
     .limit(1);
 
@@ -188,12 +189,8 @@ export async function recordGroupingEvent(
 /**
  * Evaluate and record a manual grouping trigger
  */
-export async function triggerManualGrouping(
-  quizId: string,
-  adminId: string,
-  reason: string = 'Manual admin trigger'
-): Promise<TriggerEvaluation> {
-  const evaluation: TriggerEvaluation = {
+export function manualTriggerEvaluation(reason: string = 'Manual admin trigger'): TriggerEvaluation {
+  return {
     shouldTrigger: true,
     reason,
     eventType: 'manual_trigger',
@@ -201,39 +198,53 @@ export async function triggerManualGrouping(
     rankingChanged: false,
     inCooldown: false,
   };
+}
 
-  // Record the manual trigger event
+/**
+ * Record a manual grouping trigger after the attempt, with its outcome
+ */
+export async function triggerManualGrouping(
+  quizId: string,
+  adminId: string,
+  reason: string = 'Manual admin trigger',
+  groupingStatus?: 'succeeded' | 'failed'
+): Promise<TriggerEvaluation> {
+  const evaluation = manualTriggerEvaluation(reason);
+
   await recordGroupingEvent(quizId, evaluation, undefined, undefined, undefined, {
     triggeredBy: adminId,
     manualTrigger: true,
+    ...(groupingStatus && { grouping_status: groupingStatus }),
   });
 
   return evaluation;
+}
+
+// Start of the cooldown window, computed by PostgreSQL so app/database clock skew cannot shift it.
+export function cooldownStartSql(cooldownMinutes: number) {
+  return sql`now() - make_interval(mins => ${cooldownMinutes})`;
 }
 
 /**
  * Check if the quiz is in cooldown period for automatic triggers
  */
 async function isInCooldownPeriod(quizId: string, cooldownMinutes: number): Promise<boolean> {
-  const cooldownTime = new Date(Date.now() - cooldownMinutes * 60 * 1000);
-
   const recentEvents = await db
-    .select()
+    .select({ id: groupingEvents.id })
     .from(groupingEvents)
     .where(
       and(
         eq(groupingEvents.quizId, quizId),
         eq(groupingEvents.shouldTriggerGrouping, true),
         // Only attempts that regrouped start the cooldown; events without a status predate grouping_status
-        sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', 'succeeded') = 'succeeded'`
+        sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', 'succeeded') = 'succeeded'`,
+        // The database clock wrote created_at, so it also measures the window
+        gt(groupingEvents.createdAt, cooldownStartSql(cooldownMinutes))
       )
     )
-    .orderBy(desc(groupingEvents.createdAt))
     .limit(1);
 
-  if (recentEvents.length === 0) return false;
-
-  return recentEvents[0].createdAt > cooldownTime;
+  return recentEvents.length > 0;
 }
 
 /**

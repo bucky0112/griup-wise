@@ -23,6 +23,8 @@ The code review of PR #9 (2026-10-15) found concurrency defects in the automatic
 - Re-read and validate membership inside the locked edit transaction; when the target groups no longer belong to the active run, reject the edit with HTTP 409 and a message asking the admin to reload.
 - Restore a cheap admin-managed pre-check before the ranking hashes; the locked check stays authoritative.
 
+- Follow-up from `/code-review 9` (2026-10-15): decide edit staleness by named group ids only and treat participants with only archived memberships as ungrouped (the first version left such participants permanently un-movable), answer 409 also for unknown group ids (regroups delete replaced groups, so they cannot be told apart), record ranking hashes and admin-grouping outcomes only for applied groupings, measure the cooldown with the database clock, and de-duplicate batch-move ids.
+
 ## Non-Goals (optional)
 
 See design.md.

@@ -53,11 +53,27 @@ Alternative considered: record a "regroup started" event before the attempt (rej
 
 ### Validate edits against the active run under the lock
 
-After taking the quiz lock, each edit re-reads the memberships and groups it touches, restricted to groups of the quiz's active run. When a named group or membership is not part of the active run, the edit performs no writes and returns `{ success: false, reason: 'stale_grouping', message: '分組已更新，請重新整理後再操作' }` from the manager, or responds 409 directly in the members `PATCH` route. The member-edit routes map `reason: 'stale_grouping'` to HTTP 409 and keep 400 for other failures.
+After taking the quiz lock, each edit checks the group ids it names against the quiz's active run. A group id that exists but is outside the active run makes the edit stale: it performs no writes and returns `{ success: false, reason: 'stale_grouping', message: '分組已更新，請重新整理後再操作' }` from the manager, or responds 409 directly in the members `PATCH` route. A group id that does not exist gets the same 409: regroups delete the groups they replace, so a replaced id and an id that never existed are indistinguishable (a 404 for unknown ids was considered on 2026-10-15 and dropped for this reason; keeping replaced groups as archived tombstones would need a migration because of `groups_quiz_order_unique`). The member-edit routes map the reason through `editFailureStatus` and keep 400 for other failures.
+
+Memberships are only read within the active run. A participant whose memberships are all in archived runs is ungrouped: move and batch move add them to the target group without touching archived rows, and swap returns the existing 400 failure.
+
+Revised on 2026-10-15 after `/code-review 9`: the first implementation also treated "membership only in an archived run" as stale. Because the create route archives runs without deleting their memberships, an ungrouped participant always has such a membership and could never be moved again (permanent 409). Staleness is now decided by group ids only.
 
 ### Early admin-managed skip in autoGroup
 
 `autoGroup` reads the active run before `evaluateSubmissionTrigger`. When it is admin-managed, it records a `skipped_admin_managed` event with `should_trigger_grouping = false` and no ranking hashes, and returns the admin-managed reason. The locked check inside `performGrouping` still catches runs that become admin-managed after this read.
+
+### Record only applied groupings in grouping events
+
+Ranking hashes are written only on events with `grouping_status: "succeeded"`; skipped, failed and non-triggering events store none, and `evaluateSubmissionTrigger` compares against the latest event that has a hash (the last applied ranking, or a legacy event) instead of the latest event of any kind. `manualGroup` records its event after `performGrouping` with `succeeded` or `failed` instead of calling `triggerManualGrouping` up front. When the regroup has committed, a failure to record the `succeeded` event is logged and `autoGroup` still returns the committed result; when the regroup itself failed, a failure to record the `failed` event is logged and the original error is rethrown.
+
+### Measure the cooldown with the database clock
+
+The in-lock automatic-run check and `isInCooldownPeriod` compare `created_at` with `now() - interval '5 minutes'` evaluated by PostgreSQL, so clock skew between the app server and the database cannot shorten or extend the cooldown.
+
+### Share the admin-managed check and compute the ranking hash once
+
+`isActiveRunAdminManaged(executor, quizId)` is the single implementation used by the early check and by the in-lock check, and one helper builds the skipped `GroupingResult`. `autoGroup` computes the current ranking hash once and uses it as both the old and new hash, replacing the two identical computations. `batchMove` de-duplicates `participantIds` before validating and inserting.
 
 ## Implementation Contract
 
@@ -66,13 +82,14 @@ After taking the quiz lock, each edit re-reads the memberships and groups it tou
 - Concurrent grouping operations on one quiz run one after another; none fails with 40P01.
 - Concurrent first-threshold submissions produce one active run and no failed event.
 - During and within 5 minutes after an automatic regroup, further qualifying submissions report `In cooldown period (5 minutes)`.
-- Member edits naming groups outside the active run return 409 `分組已更新，請重新整理後再操作` and write nothing.
+- Member edits naming existing groups outside the active run return 409 `分組已更新，請重新整理後再操作` and write nothing; unknown group ids get the same 409; participants with only archived memberships are treated as ungrouped.
+- Skipped and failed grouping events carry no ranking hashes; admin grouping events record their outcome after the attempt.
 - Submissions on admin-managed quizzes skip before ranking work.
 
 **Interface / data shape**
 
 - `lockQuizForGrouping(tx: DbExecutor, quizId: string): Promise<void>` exported from `src/lib/grouping/quiz-lock.ts`.
-- `GroupEditResult` and `BatchOperationResult` gain optional `reason?: 'stale_grouping'`.
+- `GroupEditResult` and `BatchOperationResult` gain optional `reason?: 'stale_grouping'`; `editFailureStatus` maps it to 409.
 - `grouping_events.trigger_metadata.grouping_status` gains `"skipped_cooldown"`.
 
 **Failure modes**
