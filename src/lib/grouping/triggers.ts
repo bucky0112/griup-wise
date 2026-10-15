@@ -224,8 +224,8 @@ async function isInCooldownPeriod(quizId: string, cooldownMinutes: number): Prom
       and(
         eq(groupingEvents.quizId, quizId),
         eq(groupingEvents.shouldTriggerGrouping, true),
-        // Attempts that failed or were skipped did not regroup, so they must not start the cooldown
-        sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', '') not in ('failed', 'skipped_admin_managed')`
+        // Only attempts that regrouped start the cooldown; events without a status predate grouping_status
+        sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', 'succeeded') = 'succeeded'`
       )
     )
     .orderBy(desc(groupingEvents.createdAt))
