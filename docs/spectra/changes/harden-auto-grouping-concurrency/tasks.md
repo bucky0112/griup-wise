@@ -15,4 +15,4 @@
 ## 4. Spec and wrap-up
 
 - [x] 4.1 [after: 3.2] Run `pnpm test` and `pnpm build`; both exit 0. Run `pnpm lint` and confirm no problems are added compared with the branch base (GitHub issue #8 tracks the existing ones).
-- [ ] 4.2 [after: 4.1] Staging acceptance on the Railway `staging` environment after `railway up` of `fix/auto-grouping-failure`: a burst of 5 concurrent curl submissions on a fresh quiz past the threshold creates one regroup with four cooldown reasons; moving a participant from `/admin/groups/[quizId]` after a regroup triggered from another session shows the 409 message as a toast. Record the result in PR #9.
+- [x] 4.2 [after: 4.1] Staging acceptance on the Railway `staging` environment after `railway up` of `fix/auto-grouping-failure`: a burst of 5 concurrent curl submissions on a fresh quiz past the threshold creates one regroup with four cooldown reasons; moving a participant from `/admin/groups/[quizId]` after a regroup triggered from another session shows the 409 message as a toast. Record the result in PR #9.
