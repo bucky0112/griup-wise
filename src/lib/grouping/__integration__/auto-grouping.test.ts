@@ -7,18 +7,19 @@ import {
   classes,
   quizzes,
   participants,
+  questions,
   submissions,
   groupingRuns,
   groupingEvents,
   groups,
   groupMembers,
 } from '@/lib/db';
-import { GroupingManager, groupingManager } from '@/lib/grouping/manager';
+import { GroupingManager, groupingManager, markRunAdminManaged } from '@/lib/grouping/manager';
 import { defaultConfigs, type GroupingConfig } from '@/lib/grouping/config';
 import { truncateTables } from '@/test/db';
-import type { AdminSession } from '@/lib/auth';
+import type { UserSession } from '@/lib/auth';
 
-let currentSession: AdminSession | null = null;
+let currentSession: UserSession | null = null;
 
 // performGrouping is private; tests intercept it to simulate failures and concurrent admin edits
 type PerformGrouping = (...args: unknown[]) => Promise<unknown>;
@@ -58,6 +59,35 @@ async function submit(quizId: string, score: number) {
     .returning();
   await db.insert(submissions).values({ quizId, participantId: participant.id, totalScore: String(score) });
   return participant.id;
+}
+
+async function addParticipant(quizId: string, displayName: string) {
+  studentCounter += 1;
+  const studentNo = `S${String(studentCounter).padStart(3, '0')}`;
+  const [participant] = await db
+    .insert(participants)
+    .values({ quizId, displayName, studentNo, uniqueKey: `${quizId}:${studentNo}` })
+    .returning();
+  return participant;
+}
+
+// Seeds an automatic run with two groups so membership edits have somewhere to move participants.
+async function seedAutomaticRunWithTwoGroups() {
+  const { adminId, quizId } = await seedQuiz();
+  const twoPerGroup = { ...defaultConfigs.medium, target_group_size: 2 };
+  await submit(quizId, 90);
+  await submit(quizId, 80);
+  await submit(quizId, 70);
+  const p4 = await submit(quizId, 60);
+  const created = await autoGroupAfterSubmit(quizId, p4, twoPerGroup);
+  expect(created.success).toBe(true);
+
+  const groupRows = await db.select().from(groups).where(eq(groups.quizId, quizId)).orderBy(groups.orderIndex);
+  const membersOf = (groupId: string) =>
+    db.select().from(groupMembers).where(eq(groupMembers.groupId, groupId));
+  const [first] = await membersOf(groupRows[0].id);
+  const [second] = await membersOf(groupRows[1].id);
+  return { adminId, quizId, groupRows, first, second };
 }
 
 // The submit route calls autoGroup with the medium preset after each submission.
@@ -139,6 +169,55 @@ describe('automatic grouping', () => {
       const snapshot = await snapshotGrouping(quizId);
       expect(snapshot.groupIds).toHaveLength(1);
       expect(snapshot.members.map((m) => m.split(':')[1]).sort()).toEqual([p1, p2, p3].sort());
+    });
+  });
+
+  describe('Submit response reports automatic grouping', () => {
+    it('reports triggered, groupsCreated and the reason through POST /api/assignments/submit', async () => {
+      const { quizId } = await seedQuiz();
+      const [question] = await db
+        .insert(questions)
+        .values({ quizId, type: 'single', prompt: '1+1=?', options: ['2', '3'], answerKey: ['2'], score: '10', orderIndex: 1 })
+        .returning();
+      const { POST } = await import('@/app/api/assignments/submit/route');
+
+      const submitAs = async (displayName: string, answer: string) => {
+        const participant = await addParticipant(quizId, displayName);
+        currentSession = {
+          type: 'student',
+          participantId: participant.id,
+          quizId,
+          displayName,
+          studentNo: participant.studentNo,
+        };
+        const response = await POST(
+          new NextRequest('http://localhost/api/assignments/submit', {
+            method: 'POST',
+            body: JSON.stringify({ answers: { [question.id]: answer } }),
+          })
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()).autoGrouping;
+      };
+
+      expect(await submitAs('A', '2')).toMatchObject({ evaluated: true, triggered: false });
+      expect(await submitAs('B', '3')).toMatchObject({ evaluated: true, triggered: false });
+
+      const third = await submitAs('C', '2');
+      expect(third).toMatchObject({ evaluated: true, triggered: true });
+      expect(third.groupsCreated).toBeGreaterThan(0);
+
+      // An admin edit makes the run admin-managed; after the cooldown the next submission is skipped
+      const [group] = await db.select().from(groups).where(eq(groups.quizId, quizId));
+      await markRunAdminManaged(db, group.id);
+      await expireCooldown(quizId);
+
+      expect(await submitAs('D', '3')).toEqual({
+        evaluated: true,
+        triggered: false,
+        reason: ADMIN_MANAGED_REASON,
+        groupsCreated: 0,
+      });
     });
   });
 
@@ -290,6 +369,26 @@ describe('automatic grouping', () => {
       expect(result.success).toBe(false);
       expect(result.triggerEvaluation?.reason).toBe(ADMIN_MANAGED_REASON);
       expect(await snapshotGrouping(quizId)).toEqual(before);
+    });
+
+    it('marks an automatic run as admin-managed when an admin swaps participants', async () => {
+      const { adminId, quizId, first, second } = await seedAutomaticRunWithTwoGroups();
+
+      const swapped = await groupingManager.swapParticipants(first.participantId, second.participantId, adminId);
+
+      expect(swapped.success).toBe(true);
+      const [run] = await activeRuns(quizId);
+      expect((run.config as Record<string, unknown>).trigger).toBe('manual_adjusted');
+    });
+
+    it('marks an automatic run as admin-managed when an admin batch-moves participants', async () => {
+      const { adminId, quizId, groupRows, first } = await seedAutomaticRunWithTwoGroups();
+
+      const moved = await groupingManager.batchMove([first.participantId], groupRows[1].id, adminId);
+
+      expect(moved.success).toBe(true);
+      const [run] = await activeRuns(quizId);
+      expect((run.config as Record<string, unknown>).trigger).toBe('manual_adjusted');
     });
 
     it('refreshes an automatic run that no admin has adjusted', async () => {
