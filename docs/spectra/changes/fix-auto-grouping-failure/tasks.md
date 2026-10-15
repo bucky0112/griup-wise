@@ -20,4 +20,4 @@
 ## 5. Wrap-up
 
 - [x] 5.1 [after: 4.2] Run `pnpm test` and `pnpm build`; both exit 0. Run `pnpm lint` and confirm this change adds no lint problems compared with the base commit (the base already has 20 errors and 27 warnings, tracked in GitHub issue #8), so `pnpm lint` is not required to exit 0.
-- [ ] 5.2 [after: 5.1] Manual acceptance on staging after deploy: create a fresh quiz, submit as 3 students, confirm `/admin/groups/[quizId]` shows groups and the third submit response has `autoGrouping.triggered = true`; then move one member, submit a 4th student after 5 minutes, and confirm the groups are unchanged. Record the result in the PR description, which closes GitHub issue #2.
+- [x] 5.2 [after: 5.1] Manual acceptance on staging after deploy: create a fresh quiz, submit as 3 students, confirm `/admin/groups/[quizId]` shows groups and the third submit response has `autoGrouping.triggered = true`; then move one member, submit a 4th student after 5 minutes, and confirm the groups are unchanged. Record the result in the PR description, which closes GitHub issue #2.
