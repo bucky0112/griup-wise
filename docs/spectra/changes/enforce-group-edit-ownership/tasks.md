@@ -9,4 +9,4 @@
 ## 3. Wrap-up
 
 - [x] 3.1 [after: 2.1] Run `pnpm test` and `pnpm build`; both exit 0. `pnpm lint` adds no problems compared with the branch base.
-- [ ] 3.2 [after: 3.1] Staging acceptance after `railway up` of `fix/auto-grouping-failure`: the staging admin's own move through `/api/admin/groups/batch-move` still returns 200. A second staging admin account is not created for this check; the cross-admin 403 is covered by the integration tests. Record the result in PR #9, which then also closes GitHub issue #13.
+- [x] 3.2 [after: 3.1] Staging acceptance after `railway up` of `fix/auto-grouping-failure`: the staging admin's own move through `/api/admin/groups/batch-move` still returns 200. A second staging admin account is not created for this check; the cross-admin 403 is covered by the integration tests. Record the result in PR #9, which then also closes GitHub issue #13.
