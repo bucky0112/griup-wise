@@ -31,7 +31,7 @@ vi.mock('@/lib/grouping/triggers', async (importOriginal) => {
   return {
     ...actual,
     recordGroupingEvent: async (...args: Parameters<typeof actual.recordGroupingEvent>) => {
-      const status = (args[5] as Record<string, unknown> | undefined)?.grouping_status;
+      const status = (args[5] as Record<string, unknown> | undefined)?.grouping_status ?? 'not_triggered';
       if (eventWrites.failStatus && status === eventWrites.failStatus) {
         eventWrites.failStatus = undefined;
         throw new Error('simulated event write failure');
@@ -339,6 +339,58 @@ describe('grouping concurrency', () => {
 
       expect(result.success).toBe(true);
       expect(await activeRuns(quizId)).toHaveLength(1);
+    });
+  });
+
+  describe('Grouping events: reviews, skipped attempts and failed skip writes', () => {
+    it('does not start the cooldown when an answer review records a grouping event', async () => {
+      const { quizId } = await seedQuiz();
+      await submit(quizId, 90);
+      await submit(quizId, 80);
+      const reviewed = await submit(quizId, 70);
+      // Mirrors src/app/api/admin/reviews/answer/[answerId]/route.ts, which never regroups afterwards
+      await db.insert(groupingEvents).values({
+        quizId,
+        eventType: 'manual_review',
+        participantId: reviewed,
+        triggerMetadata: { scoreChange: 5 },
+        shouldTriggerGrouping: true,
+      });
+
+      const p4 = await submit(quizId, 60);
+      const result = await autoGroupAfterSubmit(quizId, p4);
+
+      expect(result.triggerEvaluation?.reason).not.toBe(COOLDOWN_REASON);
+      expect(result.success).toBe(true);
+    });
+
+    it('records an in-lock cooldown skip as non-triggering', async () => {
+      const { quizId } = await seedQuiz();
+      await submit(quizId, 90);
+      await submit(quizId, 80);
+      const burst = [];
+      for (const score of [70, 65, 60]) burst.push(await submit(quizId, score));
+
+      await Promise.all(burst.map((participantId) => autoGroupAfterSubmit(quizId, participantId)));
+
+      const events = await db.select().from(groupingEvents).where(eq(groupingEvents.quizId, quizId));
+      for (const event of events) {
+        const status = (event.triggerMetadata as Record<string, unknown>).grouping_status;
+        if (status === 'skipped_cooldown' || status === 'skipped_admin_managed') {
+          expect(event.shouldTriggerGrouping, String(status)).toBe(false);
+        }
+      }
+    });
+
+    it('still reports the skip when writing a non-triggering event fails', async () => {
+      const { quizId } = await seedQuiz();
+      const p1 = await submit(quizId, 90);
+      eventWrites.failStatus = 'not_triggered';
+
+      const result = await autoGroupAfterSubmit(quizId, p1);
+
+      expect(result.success).toBe(false);
+      expect(result.triggerEvaluation?.reason).toContain('Not enough participants');
     });
   });
 

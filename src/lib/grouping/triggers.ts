@@ -1,5 +1,5 @@
 import { db, groupingEvents, submissions, participants } from '../db';
-import { eq, and, desc, gt, isNotNull, sql } from 'drizzle-orm';
+import { eq, and, desc, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { createDeterministicRanking, generateRankingHash, detectRankingChanges } from './ranking';
 
@@ -236,6 +236,8 @@ async function isInCooldownPeriod(quizId: string, cooldownMinutes: number): Prom
       and(
         eq(groupingEvents.quizId, quizId),
         eq(groupingEvents.shouldTriggerGrouping, true),
+        // Other features (answer reviews) also write grouping events but never regroup
+        inArray(groupingEvents.eventType, ['submission', 'manual_trigger']),
         // Only attempts that regrouped start the cooldown; events without a status predate grouping_status
         sql`coalesce(${groupingEvents.triggerMetadata}->>'grouping_status', 'succeeded') = 'succeeded'`,
         // The database clock wrote created_at, so it also measures the window

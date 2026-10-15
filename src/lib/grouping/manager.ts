@@ -180,6 +180,26 @@ export class GroupingManager {
     // Validate configuration
     const validatedConfig = validateGroupingConfig(config);
 
+    // Every outcome is logged after the attempt. Skips are non-triggering and carry no ranking hash, and a failed
+    // log write never changes the outcome the submission reports.
+    const record = (
+      evaluation: TriggerEvaluation,
+      groupingStatus?: 'succeeded' | 'failed' | SkippedStatus,
+      rankingHash?: string
+    ) =>
+      recordEventSafely(() =>
+        recordGroupingEvent(quizId, evaluation, participantId, rankingHash, rankingHash, {
+          trigger_type: 'automatic',
+          config_used: validatedConfig,
+          ...(groupingStatus && { grouping_status: groupingStatus }),
+        })
+      );
+    const skip = async (evaluation: TriggerEvaluation, groupingStatus?: SkippedStatus) => {
+      const skipped = { ...evaluation, shouldTrigger: false };
+      await record(skipped, groupingStatus);
+      return skippedResult(skipped, validatedConfig);
+    };
+
     // Admin-managed quizzes are never regrouped automatically, so skip before any ranking work.
     // The locked check in performGrouping still catches runs that become admin-managed after this read.
     if (await isActiveRunAdminManaged(db, quizId)) {
@@ -187,20 +207,17 @@ export class GroupingManager {
         .select({ submittedCount: count() })
         .from(submissions)
         .where(eq(submissions.quizId, quizId));
-      const skipped: TriggerEvaluation = {
-        shouldTrigger: false,
-        reason: ADMIN_MANAGED_REASON,
-        eventType: 'submission',
-        participantCount: submittedCount,
-        rankingChanged: false,
-        inCooldown: false,
-      };
-      await recordGroupingEvent(quizId, skipped, participantId, undefined, undefined, {
-        trigger_type: 'automatic',
-        config_used: validatedConfig,
-        grouping_status: 'skipped_admin_managed',
-      });
-      return skippedResult(skipped, validatedConfig);
+      return skip(
+        {
+          shouldTrigger: false,
+          reason: ADMIN_MANAGED_REASON,
+          eventType: 'submission',
+          participantCount: submittedCount,
+          rankingChanged: false,
+          inCooldown: false,
+        },
+        'skipped_admin_managed'
+      );
     }
 
     // Evaluate if grouping should be triggered
@@ -211,32 +228,13 @@ export class GroupingManager {
       defaultTriggerConfig
     );
 
-    // The submission is already committed, so the current ranking is both the previous and the new state
-    const rankingHash = await this.getCurrentRankingHash(quizId, validatedConfig);
-
-    // The event is recorded after the attempt so the cooldown only counts groupings that succeeded.
-    // Only an applied regroup records ranking hashes, so later change detection compares against it.
-    const recordEvent = (groupingStatus?: 'succeeded' | 'failed' | SkippedStatus) => {
-      const applied = groupingStatus === 'succeeded';
-      return recordGroupingEvent(
-        quizId,
-        evaluation,
-        participantId,
-        applied ? rankingHash : undefined,
-        applied ? rankingHash : undefined,
-        {
-          trigger_type: 'automatic',
-          config_used: validatedConfig,
-          ...(groupingStatus && { grouping_status: groupingStatus }),
-        }
-      );
-    };
-
-    // If trigger evaluation says not to group, return early
     if (!evaluation.shouldTrigger) {
-      await recordEvent();
-      return skippedResult(evaluation, validatedConfig);
+      return skip(evaluation);
     }
+
+    // Only a succeeded event stores the ranking hash, so compute it only when a regroup will be attempted.
+    // The submission is already committed, so the current ranking is both the previous and the new state.
+    const rankingHash = await this.getCurrentRankingHash(quizId, validatedConfig);
 
     let result: GroupingResult;
     try {
@@ -254,16 +252,15 @@ export class GroupingManager {
       result = await this.performGrouping(quizId, validatedConfig, quiz.createdBy, evaluation, 'automatic');
     } catch (error) {
       if (error instanceof GroupingSkippedError) {
-        await recordEvent(error.status);
-        return skippedResult({ ...evaluation, shouldTrigger: false, reason: error.reason }, validatedConfig);
+        return skip({ ...evaluation, reason: error.reason }, error.status);
       }
 
-      await recordEventSafely(() => recordEvent('failed'));
+      await record(evaluation, 'failed');
       throw error;
     }
 
     // The regroup is committed; failing to log it must not turn the result into a failure
-    await recordEventSafely(() => recordEvent('succeeded'));
+    await record(evaluation, 'succeeded', rankingHash);
     return result;
   }
 

@@ -67,6 +67,10 @@ Revised on 2026-10-15 after `/code-review 9`: the first implementation also trea
 
 Ranking hashes are written only on events with `grouping_status: "succeeded"`; skipped, failed and non-triggering events store none, and `evaluateSubmissionTrigger` compares against the latest event that has a hash (the last applied ranking, or a legacy event) instead of the latest event of any kind. `manualGroup` records its event after `performGrouping` with `succeeded` or `failed` instead of calling `triggerManualGrouping` up front. When the regroup has committed, a failure to record the `succeeded` event is logged and `autoGroup` still returns the committed result; when the regroup itself failed, a failure to record the `failed` event is logged and the original error is rethrown.
 
+### Count only grouping events toward the cooldown and record every skip the same way
+
+Found by the third `/code-review` on PR #9 (2026-10-15). The review routes insert `manual_review` / `batch_review` events with `should_trigger_grouping = true` but never regroup, so with "no status counts as succeeded" a grade blocked automatic grouping for 5 minutes. `isInCooldownPeriod` now also requires `event_type` to be `submission` or `manual_trigger`. Every skip path (not triggered, early admin-managed, in-lock admin-managed or cooldown) records through one helper with `should_trigger_grouping = false`, the matching `grouping_status` and no hashes, wrapped in `recordEventSafely`. The ranking hash is computed only after the trigger evaluation decides to regroup, because only a succeeded event stores it.
+
 ### Measure the cooldown with the database clock
 
 The in-lock automatic-run check and `isInCooldownPeriod` compare `created_at` with `now() - interval '5 minutes'` evaluated by PostgreSQL, so clock skew between the app server and the database cannot shorten or extend the cooldown.

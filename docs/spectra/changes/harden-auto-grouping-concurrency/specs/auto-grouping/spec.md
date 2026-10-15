@@ -88,7 +88,7 @@ When a quiz's active grouping run is admin-managed, the system SHALL decide to s
 
 ### Requirement: Grouping events reflect only applied groupings
 
-The system SHALL record ranking hashes only on grouping events whose regroup succeeded, so a ranking that was skipped or failed is never treated as already grouped. Admin grouping events SHALL be recorded after the attempt with `grouping_status` `succeeded` or `failed`, so a failed admin grouping does not start the automatic-grouping cooldown. When a regroup has committed but recording its event fails, the submission SHALL still report the committed outcome.
+The system SHALL record ranking hashes only on grouping events whose regroup succeeded, so a ranking that was skipped or failed is never treated as already grouped. Admin grouping events SHALL be recorded after the attempt with `grouping_status` `succeeded` or `failed`, so a failed admin grouping does not start the automatic-grouping cooldown. When a regroup has committed but recording its event fails, the submission SHALL still report the committed outcome, and a failure to record any skipped or non-triggering event SHALL NOT change the reported outcome either. Only grouping events (`submission` and `manual_trigger`) SHALL count toward the automatic-grouping cooldown; events written by other features, such as answer reviews, SHALL NOT. An automatic attempt that is skipped inside the regroup transaction SHALL be recorded with `should_trigger_grouping = false`, the same as every other skipped attempt.
 
 #### Scenario: Skipped and failed attempts leave no ranking hash
 
@@ -101,6 +101,22 @@ The system SHALL record ranking hashes only on grouping events whose regroup suc
 - **WHEN** an admin grouping through `groupingManager.manualGroup` fails
 - **THEN** its grouping event records `grouping_status: "failed"`
 - **AND** a qualifying submission within 5 minutes is not rejected with the cooldown reason
+
+#### Scenario: Grading an answer does not start the cooldown
+
+- **WHEN** a review route records a `manual_review` or `batch_review` grouping event with `should_trigger_grouping = true`
+- **AND** a qualifying submission for the same quiz arrives within 5 minutes
+- **THEN** the submission is not rejected with the cooldown reason
+
+#### Scenario: Skipped attempts are recorded as non-triggering
+
+- **WHEN** an automatic attempt is skipped inside the regroup transaction for the cooldown or because the run is admin-managed
+- **THEN** its grouping event has `should_trigger_grouping = false` and the matching `grouping_status`
+
+#### Scenario: Event recording fails for a skipped submission
+
+- **WHEN** writing the grouping event for a submission that does not regroup fails
+- **THEN** `autoGroup` still returns `success: false` with the skip reason instead of throwing
 
 #### Scenario: Event recording fails after a committed regroup
 

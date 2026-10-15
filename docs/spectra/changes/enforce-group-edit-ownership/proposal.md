@@ -31,7 +31,7 @@ The five routes only check that the session is an admin and pass `session.id` to
 ## Impact
 
 - Affected code:
-  - Modified: src/lib/grouping/manager.ts, src/lib/grouping/__integration__/grouping-concurrency.test.ts
+  - Modified: src/lib/grouping/manager.ts
   - New: src/lib/grouping/__integration__/group-edit-ownership.test.ts
   - Removed: none
 - The five routes need no code change: they already pass `session.id` and use `editFailureStatus`.
