@@ -9,8 +9,8 @@ export default defineConfig({
     },
   },
   test: {
-    // The Jest-based tests in src/lib/grouping/__tests__ are not runnable yet and stay excluded.
-    include: ['src/**/__integration__/**/*.test.ts'],
+    // __unit__ tests are pure; __integration__ tests use the PostgreSQL test database.
+    include: ['src/**/__unit__/**/*.test.ts', 'src/**/__integration__/**/*.test.ts'],
     globalSetup: ['./src/test/db.ts'],
     env: {
       DATABASE_URL: resolveTestDatabaseUrl(),
