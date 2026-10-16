@@ -1,11 +1,10 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import {
   groupingConfigSchema,
   validateGroupingConfig,
   migrateLegacyConfig,
   calculateOptimalConfig,
   defaultConfigs,
-  type GroupingConfig,
   type LegacyConfig,
 } from '../config';
 
@@ -131,7 +130,7 @@ describe('GroupingConfig', () => {
 
       expect(config.target_group_size).toBe(3);
       expect(config.min_groups).toBeGreaterThan(0);
-      expect(config.max_groups).toBeGreaterThan(config.min_groups);
+      expect(config.max_groups).toBeGreaterThan(config.min_groups!);
     });
 
     it('uses default group size when not specified', () => {
