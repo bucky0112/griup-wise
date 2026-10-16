@@ -27,6 +27,14 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Deploying to Railway
+
+The `web` service runs in two Railway environments, `staging` and `production`.
+
+- **Deploy:** from a clean checkout of the commit to ship, run `railway up --environment <staging|production> --service web --ci`. Each deploy runs `pnpm db:migrate` before starting `pnpm start`.
+- **Service configuration** (build, start and pre-deploy commands) lives in `.railway/railway.ts`. Railway does not read it during deploys; change it and push it with `railway config plan --environment <env>` followed by `railway config apply --environment <env>`, staging first.
+- **Variables** such as `DATABASE_URL` and `SESSION_SECRET` are not managed by `.railway/railway.ts`; set them in the Railway dashboard or with `railway variables`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
