@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
+import { sortingLabel } from '@/lib/grouping/strategy-label';
 import {
   DndContext,
   closestCenter,
@@ -230,6 +231,7 @@ interface RunInfo {
     max_groups?: number;
     sort_by: string;
   };
+  strategy: string;
   status: string;
 }
 
@@ -741,7 +743,7 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
               </div>
               <div>
                 <span className="font-medium">排序方式：</span>
-                <span>{data.run_info.config.sort_by === 'total_score' ? '總分' : '其他'}</span>
+                <span>{sortingLabel(data.run_info.strategy)}</span>
               </div>
               <div>
                 <span className="font-medium">未交卷者：</span>
