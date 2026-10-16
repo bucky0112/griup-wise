@@ -5,7 +5,7 @@
 ## 2. Staging rollout
 
 - [x] 2.1 [after: 1.1] Per "Restart policy is confirmed by the plan, not assumed" and "Staging first": with the CLI linked to `staging`, run `railway config migrate cutover --service web`, then `railway config plan --environment staging --verbose`. The plan changes only `web` and shows no deletions, variable changes or restart-policy change; if it does, adjust `.railway/railway.ts` or run `railway config migrate undo` and stop. Record the plan summary in the PR.
-- [ ] 2.2 [after: 2.1] Run `railway config apply --environment staging`, then deploy this branch to staging from a clean worktree. Verify: deploy logs contain `migrations applied successfully`; `/login` returns 200; the staging `serviceInstance` query reports `restartPolicyType: ON_FAILURE`, `restartPolicyMaxRetries: 10` and an empty `railwayConfigFile`; `railway config migrate status` lists no service on Config as Code.
+- [x] 2.2 [after: 2.1] Run `railway config apply --environment staging`, then deploy this branch to staging from a clean worktree. Verify: deploy logs contain `migrations applied successfully`; `/login` returns 200; the staging `serviceInstance` query reports `restartPolicyType: ON_FAILURE`, `restartPolicyMaxRetries: 10` and an empty `railwayConfigFile`; `railway config migrate status` lists no service on Config as Code.
 
 ## 3. Production rollout
 
