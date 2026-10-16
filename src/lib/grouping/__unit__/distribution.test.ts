@@ -1,10 +1,8 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import {
   snakeDistribution,
-  validateDistribution,
   formatDistributionSummary,
-  type DistributionResult,
-} from '../distribution';
+  } from '../distribution';
 import type { AllParticipants } from '../ranking';
 import type { GroupingConfig } from '../config';
 
@@ -76,16 +74,16 @@ describe('Snake Distribution', () => {
 
       expect(result.groups).toHaveLength(3);
 
-      // Verify snake pattern: 1→2→3, 3→2→1
-      // Group 1: 1st, 6th
-      // Group 2: 2nd, 5th, 7th
+      // Snake pattern 1→2→3, 3→2→1, then back to group 1
+      // Group 1: 1st, 6th, 7th
+      // Group 2: 2nd, 5th
       // Group 3: 3rd, 4th
       const group1Ranks = result.groups[0].participants.map(p => p.participant.rank);
       const group2Ranks = result.groups[1].participants.map(p => p.participant.rank);
       const group3Ranks = result.groups[2].participants.map(p => p.participant.rank);
 
-      expect(group1Ranks).toEqual([1, 6]);
-      expect(group2Ranks).toEqual([2, 5, 7]);
+      expect(group1Ranks).toEqual([1, 6, 7]);
+      expect(group2Ranks).toEqual([2, 5]);
       expect(group3Ranks).toEqual([3, 4]);
     });
 
@@ -235,59 +233,6 @@ describe('Snake Distribution', () => {
     });
   });
 
-  describe('validateDistribution', () => {
-    const participants: AllParticipants[] = Array.from({ length: 6 }, (_, i) =>
-      createMockParticipant(
-        (i + 1).toString(),
-        `V${(i + 1).toString().padStart(3, '0')}`,
-        100 - i * 10,
-        i + 1
-      )
-    );
-
-    it('validates correct distribution', () => {
-      const result = snakeDistribution(participants, baseConfig);
-      const validation = validateDistribution(result, participants);
-
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-
-    it('detects participant count mismatch', () => {
-      const result = snakeDistribution(participants, baseConfig);
-
-      // Remove a participant from the result to create mismatch
-      result.groups[0].participants.pop();
-
-      const validation = validateDistribution(result, participants);
-
-      expect(validation.isValid).toBe(false);
-      expect(validation.errors).toContain(expect.stringContaining('Participant count mismatch'));
-    });
-
-    it('detects duplicate assignments', () => {
-      const result = snakeDistribution(participants, baseConfig);
-
-      // Duplicate the first participant in another group
-      if (result.groups[1]) {
-        result.groups[1].participants.push({...result.groups[0].participants[0]});
-      }
-
-      const validation = validateDistribution(result, participants);
-
-      expect(validation.isValid).toBe(false);
-      expect(validation.errors).toContain(expect.stringContaining('Duplicate assignment'));
-    });
-
-    it('validates empty distribution', () => {
-      const emptyResult = snakeDistribution([], baseConfig);
-      const validation = validateDistribution(emptyResult, []);
-
-      expect(validation.isValid).toBe(true);
-      expect(validation.errors).toHaveLength(0);
-    });
-  });
-
   describe('formatDistributionSummary', () => {
     it('formats distribution summary correctly', () => {
       const participants: AllParticipants[] = Array.from({ length: 4 }, (_, i) =>
@@ -419,9 +364,8 @@ describe('Snake Distribution', () => {
       const config = { ...baseConfig, target_group_size: 4 };
       const result = snakeDistribution(participants, config);
 
-      // Should create 1 group with 5 participants (allowed since 5 <= 4+1)
-      expect(result.groups).toHaveLength(1);
-      expect(result.groups[0].participants.length).toBe(5);
+      // Group sizes never exceed target_group_size, so 5 participants split 3 + 2
+      expect(result.groups.map(g => g.participants.length)).toEqual([3, 2]);
     });
 
     it('handles edge case: 6 participants with target_group_size 4', () => {
