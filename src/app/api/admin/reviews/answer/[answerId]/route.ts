@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { questions, submissions, answers, quizzes, admins, groupingEvents } from '@/lib/db/schema';
-import { eq, and, sum } from 'drizzle-orm';
+import { questions, submissions, answers, quizzes, groupingEvents } from '@/lib/db/schema';
+import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { getEffectiveScore } from '@/lib/scoring';
-import { groupingManager } from '@/lib/grouping/manager';
 
 const reviewAnswerSchema = z.object({
   score: z.number().min(0, '分數不能小於 0'),

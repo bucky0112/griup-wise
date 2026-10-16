@@ -9,15 +9,14 @@ import {
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
-import { useEffect, useState } from "react"
+import { useSyncExternalStore } from "react"
+
+const subscribeNoop = () => () => {}
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const [mounted, setMounted] = useState(false)
+  // false during server rendering and hydration, true afterwards, without a state update in an effect
+  const mounted = useSyncExternalStore(subscribeNoop, () => true, () => false)
   const { theme = "system" } = useTheme()
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
 
   if (!mounted) {
     return (

@@ -13,7 +13,8 @@ const moveParticipantSchema = z.object({
 });
 
 export async function PUT(request: NextRequest, { params }: RouteParams) {
-  const { groupId } = await params;
+  // The participant identifies the quiz; the groupId path segment is not needed
+  await params;
 
   try {
     const session = await getSession();

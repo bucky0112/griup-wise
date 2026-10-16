@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
-import { questions, submissions, answers, quizzes, participants } from '@/lib/db/schema';
+import { questions, submissions, answers, quizzes } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 import { calculateScore } from '@/lib/scoring';
@@ -87,14 +87,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate scores for each question
-    let hasPendingReview = false;
     const scoredAnswers = quizQuestions.map(question => {
       const studentAnswer = studentAnswers[question.id];
       const maxScore = parseFloat(question.score);
 
       // Handle manual review questions
       if (question.type === 'short_text') {
-        hasPendingReview = true;
         return {
           questionId: question.id,
           response: studentAnswer,

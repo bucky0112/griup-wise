@@ -5,7 +5,6 @@ import { questions, submissions, answers, quizzes, groupingEvents } from '@/lib/
 import { eq, and, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { getEffectiveScore } from '@/lib/scoring';
-import { groupingManager } from '@/lib/grouping/manager';
 
 const batchReviewSchema = z.object({
   reviews: z.array(z.object({
@@ -128,7 +127,7 @@ export async function POST(request: NextRequest) {
 
       // Recompute total scores for affected submissions
       const updatedSubmissions = [];
-      for (const [submissionId, submissionData] of submissionUpdates) {
+      for (const [submissionId] of submissionUpdates) {
         // Get all answers for this submission
         const allAnswers = await tx
           .select({
@@ -167,12 +166,12 @@ export async function POST(request: NextRequest) {
 
       if (significantChanges.length > 0) {
         // Group by quiz for efficiency
-        const quizChanges = new Map();
+        const quizChanges = new Map<string, typeof significantChanges>();
         for (const change of significantChanges) {
           if (!quizChanges.has(change.quizId)) {
             quizChanges.set(change.quizId, []);
           }
-          quizChanges.get(change.quizId).push(change);
+          quizChanges.get(change.quizId)!.push(change);
         }
 
         // Create grouping events
@@ -182,8 +181,8 @@ export async function POST(request: NextRequest) {
             eventType: 'batch_review',
             triggerMetadata: {
               batchSize: changes.length,
-              totalScoreChange: changes.reduce((sum: number, c: any) => sum + Math.abs(c.change), 0),
-              affectedParticipants: [...new Set(changes.map((c: any) => c.participantId))],
+              totalScoreChange: changes.reduce((sum, c) => sum + Math.abs(c.change), 0),
+              affectedParticipants: [...new Set(changes.map((c) => c.participantId))],
               reviewedAt: new Date().toISOString(),
             },
             shouldTriggerGrouping: true,

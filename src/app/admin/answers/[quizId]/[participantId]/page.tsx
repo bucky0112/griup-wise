@@ -228,17 +228,17 @@ function formatStudentResponse(response: string[] | string | number | null, ques
     if (typeof response === 'object' && response !== null) {
       // Check for the actual format: { type: 'text_response', content: 'answer' }
       if ('content' in response) {
-        return (response as any).content || '未作答';
+        return (response as Record<string, string | undefined>).content || '未作答';
       }
       // Check for other common object properties
       if ('text' in response) {
-        return (response as any).text || '未作答';
+        return (response as Record<string, string | undefined>).text || '未作答';
       }
       if ('value' in response) {
-        return (response as any).value || '未作答';
+        return (response as Record<string, string | undefined>).value || '未作答';
       }
       if ('answer' in response) {
-        return (response as any).answer || '未作答';
+        return (response as Record<string, string | undefined>).answer || '未作答';
       }
 
       // Try to extract first string value from object

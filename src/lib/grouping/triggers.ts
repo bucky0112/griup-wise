@@ -1,7 +1,7 @@
 import { db, groupingEvents, submissions, participants } from '../db';
 import { eq, and, desc, gt, inArray, isNotNull, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
-import { createDeterministicRanking, generateRankingHash, detectRankingChanges } from './ranking';
+import { createDeterministicRanking, generateRankingHash } from './ranking';
 
 export interface GroupingTriggerConfig {
   minParticipantsForTrigger: number;
@@ -287,11 +287,7 @@ export async function getRecentGroupingEvents(
 /**
  * Check if automatic grouping should be triggered for a config change
  */
-export async function evaluateConfigChangeTrigger(
-  quizId: string,
-  newConfig: GroupingConfig,
-  oldConfig?: GroupingConfig
-): Promise<TriggerEvaluation> {
+export async function evaluateConfigChangeTrigger(quizId: string): Promise<TriggerEvaluation> {
   // Config changes always trigger unless in cooldown
   const inCooldown = await isInCooldownPeriod(quizId, defaultTriggerConfig.cooldownMinutes);
 

@@ -54,7 +54,7 @@ export function validateGroupingConfig(input: unknown): GroupingConfig {
     try {
       const legacyConfig = legacyConfigSchema.parse(input);
       return migrateLegacyConfig(legacyConfig);
-    } catch (legacyError) {
+    } catch {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       throw new Error(`Invalid grouping configuration: ${errorMessage}`);
     }
