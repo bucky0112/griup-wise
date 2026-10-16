@@ -237,6 +237,7 @@ interface RunInfo {
 
 interface GroupManagementProps {
   quizId: string;
+  defaultGroupSize: number;
   initialData: {
     run_info: RunInfo | null;
     groups: Group[];
@@ -252,12 +253,12 @@ interface GroupingConfig {
   reason?: string;
 }
 
-export default function GroupManagement({ quizId, initialData }: GroupManagementProps) {
+export default function GroupManagement({ quizId, defaultGroupSize, initialData }: GroupManagementProps) {
   const [data, setData] = useState(initialData);
   const [isLoading, setIsLoading] = useState(false);
   const [showAutoGroupDialog, setShowAutoGroupDialog] = useState(false);
   const [autoGroupConfig, setAutoGroupConfig] = useState<GroupingConfig>({
-    target_group_size: 4,
+    target_group_size: defaultGroupSize,
     include_unsubmitted: false,
   });
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -324,9 +325,9 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          target_group_size: 4,
+          target_group_size: defaultGroupSize,
           include_unsubmitted: false,
-          reason: '快速自動分組 (4人一組)',
+          reason: `快速自動分組 (${defaultGroupSize}人一組)`,
         }),
       });
 
@@ -629,7 +630,7 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
                       value={autoGroupConfig.target_group_size}
                       onChange={(e) => setAutoGroupConfig(prev => ({
                         ...prev,
-                        target_group_size: parseInt(e.target.value) || 4
+                        target_group_size: parseInt(e.target.value) || defaultGroupSize
                       }))}
                     />
                   </div>
