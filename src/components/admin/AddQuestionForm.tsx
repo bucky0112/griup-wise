@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,48 +12,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Plus, X } from 'lucide-react';
+import { questionSchema, type QuestionFormData } from './question-form-schema';
 
-const questionSchema = z.object({
-  prompt: z.string().min(1, '請輸入題目內容'),
-  type: z.enum(['single', 'multiple', 'short_text'], {
-    message: '請選擇題目類型',
-  }),
-  score: z.string().min(1, '請輸入分數').refine((val) => {
-    const num = parseFloat(val);
-    return !isNaN(num) && num > 0;
-  }, '分數必須大於 0'),
-  options: z.array(z.string()).optional(),
-  correctAnswers: z.array(z.string()).optional(),
-  codeSnippet: z.string().optional(),
-  codeLanguage: z.string().optional(),
-  responseFormat: z.enum(['text', 'code']).optional(),
-  expectedLanguage: z.string().optional(),
-}).refine((data) => {
-  // For choice-based questions, require options and correct answers
-  if (data.type === 'single' || data.type === 'multiple') {
-    if (!data.options || data.options.length < 2) {
-      return false;
-    }
-    // Check that all options are non-empty
-    if (data.options.some(option => !option || option.trim() === '')) {
-      return false;
-    }
-    if (!data.correctAnswers || data.correctAnswers.length === 0) {
-      return false;
-    }
-  }
-  // For code questions, require expected language if responseFormat is 'code'
-  if (data.type === 'short_text' && data.responseFormat === 'code') {
-    if (!data.expectedLanguage || data.expectedLanguage.trim() === '') {
-      return false;
-    }
-  }
-  return true;
-}, {
-  message: '請填寫完整的必要欄位',
-});
-
-type QuestionFormData = z.infer<typeof questionSchema>;
 
 interface AddQuestionFormProps {
   quizId: string;
