@@ -263,6 +263,7 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
   // Batch operations state
   const [selectedParticipants, setSelectedParticipants] = useState<Set<string>>(new Set());
   const [showBatchDialog, setShowBatchDialog] = useState(false);
+  const [manualParticipant, setManualParticipant] = useState<UngroupedParticipant | null>(null);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
 
@@ -536,42 +537,50 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
     setSelectedParticipants(new Set());
   };
 
-  const handleBatchMove = async (targetGroupId: string) => {
-    if (selectedParticipants.size === 0) {
-      toast.error('請選擇要移動的學生');
-      return;
-    }
-
+  // Shared by batch mode and the "手動分組" dialog for ungrouped participants
+  const moveParticipants = async (targetGroupId: string, participantIds: string[]) => {
     try {
       setIsLoading(true);
       const response = await fetch('/api/admin/groups/batch-move', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          participantIds: Array.from(selectedParticipants),
-          targetGroupId: targetGroupId,
-        }),
+        body: JSON.stringify({ participantIds, targetGroupId }),
       });
+      const result = await response.json();
 
-      if (!response.ok) {
-        const result = await response.json();
-        throw new Error(result.message || '批量移動失敗');
+      if (response.status === 409) {
+        // The groups were replaced since this page loaded; show the current ones instead of the stale view
+        toast.error(result.message);
+        setShowBatchDialog(false);
+        setManualParticipant(null);
+        clearSelection();
+        await refreshData();
+        return;
       }
 
-      const result = await response.json();
-      toast.success(`成功移動 ${result.affectedParticipants} 位學生`);
+      if (!response.ok) {
+        throw new Error(result.message || '移動失敗');
+      }
 
-      // Refresh data to show updated state
+      toast.success(`成功移動 ${result.affectedParticipants} 位學生`);
       await refreshData();
       clearSelection();
       setShowBatchDialog(false);
-
+      setManualParticipant(null);
     } catch (error) {
-      console.error('Batch move error:', error);
-      toast.error(error instanceof Error ? error.message : '批量移動失敗，請稍後再試');
+      console.error('Move participants error:', error);
+      toast.error(error instanceof Error ? error.message : '移動失敗，請稍後再試');
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleBatchMove = async (targetGroupId: string) => {
+    if (selectedParticipants.size === 0) {
+      toast.error('請選擇要移動的學生');
+      return;
+    }
+    await moveParticipants(targetGroupId, Array.from(selectedParticipants));
   };
 
   const stats = data.groups.length > 0 ? calculateGroupStats(data.groups) : null;
@@ -937,13 +946,41 @@ export default function GroupManagement({ quizId, initialData }: GroupManagement
                     <Badge variant={participant.reason === 'unsubmitted' ? 'destructive' : 'secondary'}>
                       {participant.reason === 'unsubmitted' ? '未交卷' : '被排除'}
                     </Badge>
-                    <Button variant="outline" size="sm">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setManualParticipant(participant)}
+                      disabled={isLoading || data.groups.length === 0}
+                    >
                       手動分組
                     </Button>
                   </div>
                 </div>
               ))}
             </div>
+            <Dialog open={manualParticipant !== null} onOpenChange={(open) => !open && setManualParticipant(null)}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>手動分組</DialogTitle>
+                  <DialogDescription>
+                    選擇要將 {manualParticipant?.display_name} 加入的組別
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-3">
+                  {data.groups.map((group) => (
+                    <Button
+                      key={group.id}
+                      variant="outline"
+                      className="justify-start"
+                      onClick={() => manualParticipant && moveParticipants(group.id, [manualParticipant.id])}
+                      disabled={isLoading}
+                    >
+                      {group.name} ({group.members.length} 人)
+                    </Button>
+                  ))}
+                </div>
+              </DialogContent>
+            </Dialog>
           </CardContent>
         </Card>
       )}
