@@ -10,7 +10,7 @@
 ## 3. Rollout
 
 - [x] 3.1 [after: 2.1] Set a random 64-character hex `SESSION_SECRET` on the Railway staging `web` service without printing it, deploy this branch to staging, and verify: `curl` to `GET /api/admin/quizzes` with an old-format cookie returns 401, and the user logs in on staging through the UI and reaches `/admin`. Record the result in the PR description.
-- [ ] 3.2 [after: 3.1] With the user's confirmation, set a different random 64-character hex `SESSION_SECRET` on the Railway production `web` service, then deploy the merged `main` to production and verify the same two checks there. Record the result in the PR.
+- [x] 3.2 [after: 3.1] With the user's confirmation, set a different random 64-character hex `SESSION_SECRET` on the Railway production `web` service, then deploy the merged `main` to production and verify the same two checks there. Record the result in the PR.
 
 ## Change notes
 
