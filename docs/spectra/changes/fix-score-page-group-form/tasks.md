@@ -26,3 +26,5 @@
 - Former task 1.1's `vitest.config.ts` edit is dropped, not completed here: the include pattern was added by merged change `fix-auto-grouping-failure`.
 - Former tasks 2.1–4.2 are renumbered 3.1–5.2; none had been started.
 - Former 4.2 referenced the "Claude 測試測驗（可刪）" quiz, which was removed when staging test data was cleaned up; the check now uses a quiz created for it.
+- Task 5.2's dialog and one-click checks were verified locally, not on staging: staging had no quiz without a grouping, and those controls only render when a quiz has none. The staging check covered the scores-page form and replacing an existing grouping.
+- The "previous grouping remains active if creation fails" clause relies on the create route's single transaction rolling back; no automated test forces a mid-transaction failure. Route tests cover both rejection messages and the seven-participant example (added during verify on 2026-10-16).
