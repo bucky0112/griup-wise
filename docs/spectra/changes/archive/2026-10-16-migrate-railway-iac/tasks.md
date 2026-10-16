@@ -14,4 +14,4 @@
 ## 4. Remove the old config and document
 
 - [x] 4.1 [after: 3.1] Per "Remove railway.toml last": delete `railway.toml` and add a README section on deploying (`railway up` from a clean worktree) and changing Railway configuration (`railway config plan` / `apply`, variables stay on the dashboard). Verify: `pnpm build` exits 0 and the PR diff removes `railway.toml`.
-- [ ] 4.2 [after: 4.1] After the PR is merged, deploy `main` to production (with the user's confirmation). Verify: production deploy logs contain `migrations applied successfully`, `/login` returns 200, and the deploy output no longer shows the Config as Code deprecation warning. Record in the PR, which closes GitHub issue #25.
+- [x] 4.2 [after: 4.1] After the PR is merged, deploy `main` to production (with the user's confirmation). Verify: production deploy logs contain `migrations applied successfully`, `/login` returns 200, and the deploy output no longer shows the Config as Code deprecation warning. Record in the PR, which closes GitHub issue #25.
