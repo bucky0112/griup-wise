@@ -43,3 +43,6 @@ next-env.d.ts
 # Spectra app data
 .spectra/
 docs/spectra/.vector-search.db*
+
+# Railway Config-as-Code cutover snapshot (local, per environment)
+.railway/.cac-migration.json
