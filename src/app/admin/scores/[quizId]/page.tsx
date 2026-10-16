@@ -14,8 +14,10 @@ import Link from 'next/link';
 import { Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/db';
-import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { quizzes, classes, questions, participants, submissions, answers, groupingRuns } from '@/lib/db/schema';
+import { and, eq } from 'drizzle-orm';
+import CreateGroupsForm from '@/components/admin/CreateGroupsForm';
+import { resolveDefaultGroupSize } from '@/lib/grouping/default-group-size';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +31,8 @@ interface ScoresData {
     title: string;
     total_questions: number;
     max_possible_score: number;
+    default_group_size: number;
+    has_active_grouping: boolean;
   };
   participants: Array<{
     id: string;
@@ -118,8 +122,10 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
       id: quizzes.id,
       title: quizzes.title,
       created_by: quizzes.createdBy,
+      class_target_group_size: classes.targetGroupSize,
     })
     .from(quizzes)
+    .innerJoin(classes, eq(quizzes.classId, classes.id))
     .where(eq(quizzes.id, quizId))
     .limit(1);
 
@@ -130,6 +136,12 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
   if (quiz[0].created_by !== adminId) {
     throw new Error('無權限查看此測驗');
   }
+
+  const activeRun = await db
+    .select({ id: groupingRuns.id })
+    .from(groupingRuns)
+    .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
+    .limit(1);
 
   // Get quiz questions and calculate total possible score
   const quizQuestions = await db
@@ -254,6 +266,8 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
       title: quiz[0].title,
       total_questions: totalQuestions,
       max_possible_score: maxPossibleScore,
+      default_group_size: resolveDefaultGroupSize(quiz[0].class_target_group_size),
+      has_active_grouping: activeRun.length > 0,
     },
     participants: finalParticipantsData,
     statistics: {
@@ -378,70 +392,11 @@ export default async function ScoresPage({ params }: PageProps) {
               <CardTitle>建立分組</CardTitle>
             </CardHeader>
             <CardContent>
-              <form className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      每組人數
-                    </label>
-                    <input
-                      type="number"
-                      name="target_group_size"
-                      min="1"
-                      max="20"
-                      defaultValue="4"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      最少組數
-                    </label>
-                    <input
-                      type="number"
-                      name="min_groups"
-                      min="1"
-                      defaultValue="1"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      最多組數
-                    </label>
-                    <input
-                      type="number"
-                      name="max_groups"
-                      min="1"
-                      defaultValue="20"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  <div className="flex items-end">
-                    <label className="flex items-center">
-                      <input
-                        type="checkbox"
-                        name="include_unsubmitted"
-                        className="mr-2"
-                      />
-                      <span className="text-sm">包含未交卷者</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div className="flex space-x-4">
-                  <Button type="submit" className="bg-blue-600 hover:bg-blue-700">
-                    建立分組
-                  </Button>
-                  <Link href={`/admin/groups/${quizId}`}>
-                    <Button variant="outline">管理現有分組</Button>
-                  </Link>
-                </div>
-              </form>
+              <CreateGroupsForm
+                quizId={quiz.id}
+                defaultGroupSize={quiz.default_group_size}
+                hasActiveGrouping={quiz.has_active_grouping}
+              />
             </CardContent>
           </Card>
         </div>

@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
+import { resolveDefaultGroupSize } from '@/lib/grouping/default-group-size';
 import GroupManagement from '@/components/admin/GroupManagement';
 import { db } from '@/lib/db';
 import {
@@ -62,6 +63,7 @@ interface GroupsData {
 interface QuizInfo {
   id: string;
   title: string;
+  defaultGroupSize: number;
 }
 
 async function fetchQuizInfo(quizId: string, adminId: string): Promise<QuizInfo> {
@@ -72,6 +74,7 @@ async function fetchQuizInfo(quizId: string, adminId: string): Promise<QuizInfo>
       title: quizzes.title,
       isActive: quizzes.isActive,
       className: classes.title,
+      classTargetGroupSize: classes.targetGroupSize,
     })
     .from(quizzes)
     .innerJoin(classes, eq(quizzes.classId, classes.id))
@@ -82,7 +85,7 @@ async function fetchQuizInfo(quizId: string, adminId: string): Promise<QuizInfo>
     throw new Error('測驗不存在或您沒有權限管理此測驗');
   }
 
-  return quiz[0];
+  return { ...quiz[0], defaultGroupSize: resolveDefaultGroupSize(quiz[0].classTargetGroupSize) };
 }
 
 async function fetchGroupsData(quizId: string, adminId: string, runId?: string): Promise<GroupsData> {
@@ -323,7 +326,7 @@ export default async function GroupsDetailPage({
       </div>
 
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <GroupManagement quizId={quizId} initialData={groupsData} />
+        <GroupManagement quizId={quizId} defaultGroupSize={quizInfo.defaultGroupSize} initialData={groupsData} />
       </div>
     </div>
   );
