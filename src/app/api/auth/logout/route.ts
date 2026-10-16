@@ -9,7 +9,6 @@ export async function POST() {
     await clearSession();
 
     // Determine redirect URL based on session type
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     let redirectUrl: string;
 
     if (!session) {
@@ -26,7 +25,9 @@ export async function POST() {
       redirectUrl = '/';
     }
 
-    return NextResponse.redirect(new URL(redirectUrl, baseUrl));
+    // A relative Location keeps the browser on the origin it used, and 303 makes it follow with GET
+    // (the admin pages log out through a form POST; 307 would repeat the POST against the page).
+    return new NextResponse(null, { status: 303, headers: { Location: redirectUrl } });
   } catch (error) {
     console.error('Logout error:', error);
     return NextResponse.json(
