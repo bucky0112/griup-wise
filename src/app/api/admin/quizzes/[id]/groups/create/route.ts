@@ -9,7 +9,7 @@ import {
   groups,
   groupMembers
 } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { lockQuizForGrouping } from '@/lib/grouping/quiz-lock';
 
@@ -179,6 +179,22 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // Use transaction to ensure data consistency
     const result = await db.transaction(async (tx) => {
       await lockQuizForGrouping(tx, quizId);
+
+      // The old run's groups would collide with the new run's order_index (groups_quiz_order_unique)
+      const activeGroupRows = await tx
+        .select({ id: groups.id })
+        .from(groups)
+        .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
+        .where(and(
+          eq(groupingRuns.quizId, quizId),
+          eq(groupingRuns.status, 'active')
+        ));
+
+      if (activeGroupRows.length > 0) {
+        const activeGroupIds = activeGroupRows.map(g => g.id);
+        await tx.delete(groupMembers).where(inArray(groupMembers.groupId, activeGroupIds));
+        await tx.delete(groups).where(inArray(groups.id, activeGroupIds));
+      }
 
       // Archive any existing active runs
       await tx
