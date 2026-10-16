@@ -40,10 +40,6 @@ export default function QuestionCard({
     onChange(selectedValue === 'true');
   };
 
-  const handleTextInput = (inputValue: string) => {
-    onChange(inputValue);
-  };
-
   const handleShortTextInput = (inputValue: string) => {
     // Create structured response for short_text questions
     const response = {
@@ -134,8 +130,8 @@ export default function QuestionCard({
 
       case 'short_text':
         // Extract current content from structured response
-        const currentContent = (value && typeof value === 'object' && (value as any).content)
-          ? (value as any).content
+        const currentContent = (value && typeof value === 'object' && (value as { content: string }).content)
+          ? (value as { content: string }).content
           : (typeof value === 'string' ? value : '');
 
         if (question.responseFormat === 'code') {
@@ -202,8 +198,8 @@ export default function QuestionCard({
     }
     if (question.type === 'short_text') {
       // Handle structured responses
-      if (value && typeof value === 'object' && (value as any).content) {
-        return (value as any).content.trim() !== '';
+      if (value && typeof value === 'object' && (value as { content: string }).content) {
+        return (value as { content: string }).content.trim() !== '';
       }
       return typeof value === 'string' && value.trim() !== '';
     }

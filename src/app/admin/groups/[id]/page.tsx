@@ -1,9 +1,7 @@
 import { redirect } from 'next/navigation';
 import { notFound } from 'next/navigation';
 import { getSession } from '@/lib/session';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import GroupManagement from '@/components/admin/GroupManagement';
 import { db } from '@/lib/db';
@@ -259,42 +257,7 @@ async function fetchGroupsData(quizId: string, adminId: string, runId?: string):
   };
 }
 
-function calculateGroupStats(groups: Group[]) {
-  const totalMembers = groups.reduce((sum, group) => sum + group.members.length, 0);
-  const avgGroupSize = totalMembers > 0 ? totalMembers / groups.length : 0;
 
-  const groupSizes = groups.map(g => g.members.length);
-  const minSize = Math.min(...groupSizes);
-  const maxSize = Math.max(...groupSizes);
-
-  const groupAverages = groups.map(group => {
-    const scores = group.members.filter(m => m.total_score !== null).map(m => m.total_score!);
-    return scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
-  });
-
-  const avgScore = groupAverages.reduce((sum, avg) => sum + avg, 0) / groupAverages.length;
-
-  return {
-    totalMembers,
-    avgGroupSize,
-    minSize,
-    maxSize,
-    sizeVariance: maxSize - minSize,
-    avgScore,
-  };
-}
-
-function getMemberStatusBadge(member: Member) {
-  if (member.total_score === null) {
-    return <Badge variant="destructive">未交卷</Badge>;
-  } else if (member.total_score >= 50) {
-    return <Badge variant="default">高分</Badge>;
-  } else if (member.total_score >= 30) {
-    return <Badge variant="secondary">中等</Badge>;
-  } else {
-    return <Badge variant="outline">待加強</Badge>;
-  }
-}
 
 export default async function GroupsDetailPage({
   params
@@ -321,8 +284,6 @@ export default async function GroupsDetailPage({
     console.error('Error fetching data:', error);
     notFound();
   }
-
-  const stats = groupsData.groups.length > 0 ? calculateGroupStats(groupsData.groups) : null;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local data of the remember plugin, not project code
+    ".remember/**",
   ]),
 ]);
 

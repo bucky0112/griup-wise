@@ -55,8 +55,8 @@ interface EditQuestionFormProps {
 
 export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQuestionFormProps) {
   // Handle manual review questions where answerKey is an object
-  const isManualReview = question.answerKey && typeof question.answerKey === 'object' && !Array.isArray(question.answerKey) && (question.answerKey as any).type === 'manual_review';
-  const manualReviewData = isManualReview ? question.answerKey as any : null;
+  const isManualReview = question.answerKey && typeof question.answerKey === 'object' && !Array.isArray(question.answerKey) && (question.answerKey as { type?: string }).type === 'manual_review';
+  const manualReviewData = isManualReview ? question.answerKey as Record<string, unknown> : null;
 
   const [options, setOptions] = useState<string[]>(Array.isArray(question.options) ? question.options : ['', '']);
   const [correctAnswers, setCorrectAnswers] = useState<string[]>(Array.isArray(question.answerKey) ? question.answerKey : []);

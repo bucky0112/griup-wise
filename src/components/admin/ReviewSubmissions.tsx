@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { CodeBlock } from '@/components/ui/code-block';
 import { toast } from 'sonner';
-import { Clock, User, FileText, Code, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, User, FileText, Code, CheckCircle } from 'lucide-react';
 
 interface PendingQuestion {
   questionId: string;
@@ -19,7 +19,8 @@ interface PendingQuestion {
   maxScore: number;
   answer: {
     id: string;
-    response: any;
+    // Plain text, or a structured short-text response saved by the student quiz page
+    response: string | { type?: string; content: string; language?: string } | null;
   };
 }
 

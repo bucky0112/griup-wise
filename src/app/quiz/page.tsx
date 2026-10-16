@@ -11,9 +11,19 @@ import QuizInterface, { Quiz, Question, Participant } from '@/components/quiz/Qu
 
 type QuizStatus = 'loading' | 'ready_to_answer' | 'completed' | 'no_assignment' | 'error';
 
+// Shape of GET /api/student/groups
+interface StudentGroupResponse {
+  my_group: {
+    name: string;
+    my_rank_in_group: number;
+    members: { display_name: string; student_no: string }[];
+  } | null;
+  message?: string;
+}
+
 // Group display component
 function GroupDisplay() {
-  const [groupData, setGroupData] = useState<any>(null);
+  const [groupData, setGroupData] = useState<StudentGroupResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -87,7 +97,7 @@ function GroupDisplay() {
           <div>
             <h5 className="text-md font-medium mb-3 text-gray-800">組員名單</h5>
             <div className="space-y-2">
-              {my_group.members.map((member: any, index: number) => (
+              {my_group.members.map((member, index) => (
                 <div
                   key={`${member.student_no}-${index}`}
                   className="flex justify-between items-center py-2 px-3 bg-gray-50 rounded"
