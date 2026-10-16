@@ -49,6 +49,7 @@ interface RunInfo {
     max_groups?: number;
     sort_by: string;
   };
+  strategy: string;
   status: string;
 }
 
@@ -112,6 +113,7 @@ async function fetchGroupsData(quizId: string, adminId: string, runId?: string):
       .select({
         id: groupingRuns.id,
         created_at: groupingRuns.createdAt,
+        strategy: groupingRuns.strategy,
         config: groupingRuns.config,
         status: groupingRuns.status,
       })
@@ -133,6 +135,7 @@ async function fetchGroupsData(quizId: string, adminId: string, runId?: string):
       .select({
         id: groupingRuns.id,
         created_at: groupingRuns.createdAt,
+        strategy: groupingRuns.strategy,
         config: groupingRuns.config,
         status: groupingRuns.status,
       })
@@ -250,6 +253,7 @@ async function fetchGroupsData(quizId: string, adminId: string, runId?: string):
         max_groups?: number;
         sort_by: string;
       },
+      strategy: targetRun.strategy,
       status: targetRun.status,
     },
     groups: groupsWithMembers,

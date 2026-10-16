@@ -63,6 +63,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .select({
           id: groupingRuns.id,
           created_at: groupingRuns.createdAt,
+          strategy: groupingRuns.strategy,
           config: groupingRuns.config,
           status: groupingRuns.status,
         })
@@ -87,6 +88,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         .select({
           id: groupingRuns.id,
           created_at: groupingRuns.createdAt,
+          strategy: groupingRuns.strategy,
           config: groupingRuns.config,
           status: groupingRuns.status,
         })
@@ -198,6 +200,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         id: targetRun.id,
         created_at: targetRun.created_at,
         config: targetRun.config,
+        strategy: targetRun.strategy,
         status: targetRun.status,
       },
       groups: groupsWithMembers,
