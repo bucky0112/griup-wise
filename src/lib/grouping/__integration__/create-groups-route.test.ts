@@ -5,6 +5,7 @@ import { db, groupingRuns, groups, groupMembers } from '@/lib/db';
 import type { UserSession } from '@/lib/auth';
 import {
   activeRuns,
+  addParticipant,
   resetGroupingTables,
   seedAutomaticRunWithTwoGroups,
   seedQuiz,
@@ -47,6 +48,41 @@ describe('POST /api/admin/quizzes/[id]/groups/create', () => {
   beforeEach(async () => {
     currentSession = null;
     await resetGroupingTables();
+  });
+
+  it('groups seven submitted participants into three groups of size 3', async () => {
+    const { adminId, quizId } = await seedQuiz();
+    for (const score of [95, 90, 85, 80, 75, 70, 65]) await submit(quizId, score);
+    loginAs(adminId);
+
+    const result = await createGroups(quizId, 3);
+
+    expect(result.status).toBe(200);
+    expect(result.body.groups_created).toBe(3);
+    const created = await groupsOf(quizId);
+    expect(created.flatMap((group) => group.members)).toHaveLength(7);
+  });
+
+  it('rejects a quiz without participants with the API message', async () => {
+    const { adminId, quizId } = await seedQuiz();
+    loginAs(adminId);
+
+    expect(await createGroups(quizId, 3)).toEqual({
+      status: 400,
+      body: { message: '此測驗沒有參與者，無法建立分組' },
+    });
+  });
+
+  it('rejects a quiz whose participants have not submitted when unsubmitted are excluded', async () => {
+    const { adminId, quizId } = await seedQuiz();
+    await addParticipant(quizId, 'Not submitted');
+    loginAs(adminId);
+
+    expect(await createGroups(quizId, 3)).toEqual({
+      status: 400,
+      body: { message: '沒有符合條件的參與者可以分組' },
+    });
+    expect(await activeRuns(quizId)).toHaveLength(0);
   });
 
   it('replaces a grouping it created earlier', async () => {
