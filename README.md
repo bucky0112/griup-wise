@@ -2,7 +2,14 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+Create `.env.local` with the required environment variables:
+
+| Variable | Purpose |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `SESSION_SECRET` | Signs session cookies; at least 32 characters, generate with `openssl rand -hex 32`. Changing it logs everyone out. |
+
+Then run the development server:
 
 ```bash
 npm run dev
