@@ -19,7 +19,7 @@
 ## 5. Wrap-up
 
 - [x] 5.1 [after: 3.2, 4.1, 4.2] Run `pnpm test`, `pnpm lint` and `pnpm build`; all three exit 0 with no new lint warnings in touched files.
-- [ ] 5.2 [after: 5.1] Manual acceptance on staging after deploy, on a quiz created for the check (class ideal size 2): the scores-page form shows 2 and creates groups, a second submission replaces them, and the group management dialog and one-click both use 2. Record the result in the PR description, which closes GitHub issues #1 and #5.
+- [x] 5.2 [after: 5.1] Manual acceptance on staging after deploy, on a quiz created for the check (class ideal size 2): the scores-page form shows 2 and creates groups, a second submission replaces them, and the group management dialog and one-click both use 2. Record the result in the PR description, which closes GitHub issues #1 and #5.
 
 ## Change notes
 
