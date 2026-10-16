@@ -6,4 +6,4 @@
 ## 2. Wrap-up
 
 - [x] 2.1 [after: 1.2] Run `pnpm test` and `pnpm build`; both exit 0. `pnpm lint` adds no problems compared with the base.
-- [ ] 2.2 [after: 2.1] Staging acceptance after `railway up`: repeat 1.1 and 1.2 on the Railway staging site.
+- [x] 2.2 [after: 2.1] Staging acceptance after `railway up`: repeat 1.1 and 1.2 on the Railway staging site.
