@@ -28,7 +28,7 @@ export interface GroupingResult {
   };
 }
 
-type EditFailureReason = 'stale_grouping' | 'forbidden';
+type EditFailureReason = 'stale_grouping' | 'forbidden' | 'not_in_group' | 'already_in_group';
 
 export interface GroupEditResult {
   success: boolean;
@@ -56,9 +56,16 @@ export function editFailureStatus(result: { reason?: EditFailureReason }): 400 |
   return 400;
 }
 
+const EDIT_FAILURE_MESSAGES: Record<EditFailureReason, string> = {
+  stale_grouping: STALE_GROUPING_MESSAGE,
+  forbidden: FORBIDDEN_GROUP_EDIT_MESSAGE,
+  not_in_group: 'Participant is not in the named group',
+  already_in_group: 'Participant is already in the target group',
+};
+
 const editFailure = (reason: EditFailureReason): GroupEditResult => ({
   success: false,
-  message: reason === 'forbidden' ? FORBIDDEN_GROUP_EDIT_MESSAGE : STALE_GROUPING_MESSAGE,
+  message: EDIT_FAILURE_MESSAGES[reason],
   reason,
 });
 const staleEdit = (): GroupEditResult => editFailure('stale_grouping');
@@ -295,7 +302,9 @@ export class GroupingManager {
   async moveParticipant(
     participantId: string,
     targetGroupId: string,
-    adminId: string
+    adminId: string,
+    // When set, the participant must currently be in this group of the active run (members PATCH route)
+    options: { fromGroupId?: string } = {}
   ): Promise<GroupEditResult> {
     const quizId = await quizIdOfParticipants([participantId]);
     if (!quizId) {
@@ -310,7 +319,7 @@ export class GroupingManager {
       const groupIds = await activeGroupIds(tx, quizId);
 
       // Ids read before an automatic regroup point at replaced groups; refuse instead of editing them
-      if (!groupIds.has(targetGroupId)) {
+      if (!groupIds.has(targetGroupId) || (options.fromGroupId && !groupIds.has(options.fromGroupId))) {
         return staleEdit();
       }
 
@@ -319,7 +328,16 @@ export class GroupingManager {
         .select({ id: groupMembers.id, groupId: groupMembers.groupId })
         .from(groupMembers)
         .where(eq(groupMembers.participantId, participantId));
-      const currentMember = memberships.find((membership) => groupIds.has(membership.groupId));
+      const currentMember = options.fromGroupId
+        ? memberships.find((membership) => membership.groupId === options.fromGroupId)
+        : memberships.find((membership) => groupIds.has(membership.groupId));
+
+      if (options.fromGroupId) {
+        if (!currentMember) return editFailure('not_in_group');
+        if (memberships.some((membership) => membership.groupId === targetGroupId)) {
+          return editFailure('already_in_group');
+        }
+      }
 
       if (currentMember) {
         await tx
@@ -355,6 +373,40 @@ export class GroupingManager {
         message: 'Participant moved successfully',
         changedGroups: currentMember ? [currentMember.groupId, targetGroupId] : [targetGroupId],
       };
+    });
+  }
+
+  /**
+   * Remove a participant from a group of the active run, leaving them ungrouped
+   */
+  async removeParticipant(participantId: string, groupId: string, adminId: string): Promise<GroupEditResult> {
+    const quizId = await quizIdOfParticipants([participantId]);
+    if (!quizId) {
+      return { success: false, message: 'Participant not found' };
+    }
+    if (!(await isQuizOwnedBy(quizId, adminId))) {
+      return editFailure('forbidden');
+    }
+
+    return await db.transaction(async (tx) => {
+      await lockQuizForGrouping(tx, quizId);
+      if (!(await activeGroupIds(tx, quizId)).has(groupId)) {
+        return staleEdit();
+      }
+
+      const [member] = await tx
+        .select({ id: groupMembers.id })
+        .from(groupMembers)
+        .where(and(eq(groupMembers.groupId, groupId), eq(groupMembers.participantId, participantId)))
+        .limit(1);
+      if (!member) {
+        return editFailure('not_in_group');
+      }
+
+      await tx.delete(groupMembers).where(eq(groupMembers.id, member.id));
+      await markRunAdminManaged(tx, groupId);
+
+      return { success: true, message: 'Participant removed successfully', changedGroups: [groupId] };
     });
   }
 
