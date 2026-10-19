@@ -7,9 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { sortingLabel } from '@/lib/grouping/strategy-label';
+import { buildGroupsCsv } from '@/lib/grouping/group-csv';
 import {
   DndContext,
   closestCenter,
@@ -237,6 +239,8 @@ interface RunInfo {
 
 interface GroupManagementProps {
   quizId: string;
+  quizTitle: string;
+  initialShowGroupPublicly: boolean;
   defaultGroupSize: number;
   initialData: {
     run_info: RunInfo | null;
@@ -253,8 +257,16 @@ interface GroupingConfig {
   reason?: string;
 }
 
-export default function GroupManagement({ quizId, defaultGroupSize, initialData }: GroupManagementProps) {
+export default function GroupManagement({
+  quizId,
+  quizTitle,
+  initialShowGroupPublicly,
+  defaultGroupSize,
+  initialData,
+}: GroupManagementProps) {
   const [data, setData] = useState(initialData);
+  const [showGroupPublicly, setShowGroupPublicly] = useState(initialShowGroupPublicly);
+  const [editingGroup, setEditingGroup] = useState<{ id: string; name: string; notes: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showAutoGroupDialog, setShowAutoGroupDialog] = useState(false);
   const [autoGroupConfig, setAutoGroupConfig] = useState<GroupingConfig>({
@@ -383,6 +395,80 @@ export default function GroupManagement({ quizId, defaultGroupSize, initialData 
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleToggleVisibility = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/quizzes/${quizId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ show_group_publicly: !showGroupPublicly }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || '操作失敗，請稍後再試');
+      }
+
+      // Show only what the server stored, so the page never claims a visibility that did not save
+      const visible: boolean = result.quiz.show_group_publicly;
+      setShowGroupPublicly(visible);
+      toast.success(visible ? '已公開分組，公開期間自動分組會暫停' : '已取消公開，自動分組將恢復');
+    } catch (error) {
+      console.error('Toggle group visibility error:', error);
+      toast.error(error instanceof Error ? error.message : '操作失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveGroupDetails = async () => {
+    if (!editingGroup) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch(`/api/admin/groups/${editingGroup.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: editingGroup.name.trim(), notes: editingGroup.notes }),
+      });
+      const result = await response.json();
+
+      if (response.status === 409) {
+        // Same as a stale move: the group was replaced, so show the current groups instead
+        toast.error(result.message);
+        setEditingGroup(null);
+        await refreshData();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(result.message || '操作失敗，請稍後再試');
+      }
+
+      const saved: { id: string; name: string; notes: string | null } = result.group;
+      setData(prev => ({
+        ...prev,
+        groups: prev.groups.map(g => (g.id === saved.id ? { ...g, name: saved.name, notes: saved.notes ?? '' } : g)),
+      }));
+      setEditingGroup(null);
+      toast.success('組別已更新');
+    } catch (error) {
+      console.error('Update group details error:', error);
+      toast.error(error instanceof Error ? error.message : '操作失敗，請稍後再試');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleExportGroups = () => {
+    const csv = buildGroupsCsv(data.groups, data.ungrouped_participants);
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${quizTitle}-分組名單.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const refreshData = async () => {
@@ -855,6 +941,7 @@ export default function GroupManagement({ quizId, defaultGroupSize, initialData 
               <div className="flex justify-between items-center">
                 <div>
                   <CardTitle className="text-lg">{group.name}</CardTitle>
+                  {group.notes && <p className="text-sm text-gray-500">{group.notes}</p>}
                   <p className="text-sm text-gray-600">
                     {group.members.length} 位成員
                     {group.members.length > 0 && (
@@ -878,7 +965,12 @@ export default function GroupManagement({ quizId, defaultGroupSize, initialData 
                       全選此組
                     </Button>
                   )}
-                  <Button variant="outline" size="sm">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setEditingGroup({ id: group.id, name: group.name, notes: group.notes })}
+                    disabled={isLoading}
+                  >
                     編輯組別
                   </Button>
                 </div>
@@ -993,13 +1085,59 @@ export default function GroupManagement({ quizId, defaultGroupSize, initialData 
         <Button onClick={handleRegenerateGroups} disabled={isLoading}>
           {isLoading ? '分組中...' : '重新分組'}
         </Button>
-        <Button variant="outline">
+        <Button
+          variant="outline"
+          onClick={handleExportGroups}
+          disabled={data.groups.length === 0 && data.ungrouped_participants.length === 0}
+        >
           匯出分組名單
         </Button>
-        <Button variant="outline">
-          公開分組
+        <Button variant="outline" onClick={handleToggleVisibility} disabled={isLoading}>
+          {showGroupPublicly ? '取消公開' : '公開分組'}
         </Button>
+        {showGroupPublicly && (
+          <Badge variant="secondary" className="self-center">學生可見</Badge>
+        )}
       </div>
+
+      <Dialog open={!!editingGroup} onOpenChange={(open) => !open && setEditingGroup(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>編輯組別</DialogTitle>
+            <DialogDescription>儲存後，之後的自動分組不會再覆蓋這次的分組。</DialogDescription>
+          </DialogHeader>
+          {editingGroup && (
+            <div className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="group-name">組名</Label>
+                <Input
+                  id="group-name"
+                  value={editingGroup.name}
+                  maxLength={100}
+                  onChange={(e) => setEditingGroup({ ...editingGroup, name: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="group-notes">備註</Label>
+                <Textarea
+                  id="group-notes"
+                  value={editingGroup.notes}
+                  maxLength={500}
+                  onChange={(e) => setEditingGroup({ ...editingGroup, notes: e.target.value })}
+                />
+              </div>
+              <div className="flex justify-end space-x-2">
+                <Button variant="outline" onClick={() => setEditingGroup(null)} disabled={isLoading}>
+                  取消
+                </Button>
+                <Button onClick={handleSaveGroupDetails} disabled={isLoading || !editingGroup.name.trim()}>
+                  {isLoading ? '儲存中...' : '儲存'}
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

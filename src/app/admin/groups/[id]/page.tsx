@@ -63,6 +63,7 @@ interface GroupsData {
 interface QuizInfo {
   id: string;
   title: string;
+  showGroupPublicly: boolean;
   defaultGroupSize: number;
 }
 
@@ -73,6 +74,7 @@ async function fetchQuizInfo(quizId: string, adminId: string): Promise<QuizInfo>
       id: quizzes.id,
       title: quizzes.title,
       isActive: quizzes.isActive,
+      showGroupPublicly: quizzes.showGroupPublicly,
       className: classes.title,
       classTargetGroupSize: classes.targetGroupSize,
     })
@@ -326,7 +328,13 @@ export default async function GroupsDetailPage({
       </div>
 
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-        <GroupManagement quizId={quizId} defaultGroupSize={quizInfo.defaultGroupSize} initialData={groupsData} />
+        <GroupManagement
+          quizId={quizId}
+          quizTitle={quizInfo.title}
+          initialShowGroupPublicly={quizInfo.showGroupPublicly}
+          defaultGroupSize={quizInfo.defaultGroupSize}
+          initialData={groupsData}
+        />
       </div>
     </div>
   );
