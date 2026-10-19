@@ -59,11 +59,20 @@ export async function verifyAdmin(email: string, password: string): Promise<Admi
   };
 }
 
+export type StudentLoginResult =
+  | { ok: true; session: StudentSession }
+  | { ok: false; reason: 'quiz_unavailable' | 'name_mismatch' };
+
+// Names match after trimming and ignoring case; internal whitespace still counts
+function normalizeDisplayName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 export async function authenticateStudent(
   displayName: string,
   studentNo: string,
   quizId: string
-): Promise<StudentSession | null> {
+): Promise<StudentLoginResult> {
   // Normalize student number (trim whitespace, uppercase)
   const normalizedStudentNo = studentNo.trim().toUpperCase();
 
@@ -75,11 +84,10 @@ export async function authenticateStudent(
     .limit(1);
 
   if (quiz.length === 0) {
-    return null;
+    return { ok: false, reason: 'quiz_unavailable' };
   }
 
-  // Check if participant already exists
-  let participant = await db
+  const findParticipant = () => db
     .select()
     .from(participants)
     .where(and(
@@ -88,11 +96,14 @@ export async function authenticateStudent(
     ))
     .limit(1);
 
+  // Check if participant already exists
+  let participant = await findParticipant();
+
   // If participant doesn't exist, create new one
   if (participant.length === 0) {
     const uniqueKey = `${quizId}:${normalizedStudentNo}`;
 
-    const newParticipant = await db
+    participant = await db
       .insert(participants)
       .values({
         quizId,
@@ -100,16 +111,29 @@ export async function authenticateStudent(
         studentNo: normalizedStudentNo,
         uniqueKey,
       })
+      // No conflict target: unique_key is derived from the same columns and may be the index that collides
+      .onConflictDoNothing()
       .returning();
 
-    participant = newParticipant;
+    // A concurrent first login inserted the same student number; its participant decides the name check
+    if (participant.length === 0) {
+      participant = await findParticipant();
+    }
+  }
+
+  // A student number already taken under another name must not hand over that participant
+  if (normalizeDisplayName(participant[0].displayName) !== normalizeDisplayName(displayName)) {
+    return { ok: false, reason: 'name_mismatch' };
   }
 
   return {
-    type: 'student',
-    participantId: participant[0].id,
-    quizId,
-    displayName: participant[0].displayName,
-    studentNo: participant[0].studentNo,
+    ok: true,
+    session: {
+      type: 'student',
+      participantId: participant[0].id,
+      quizId,
+      displayName: participant[0].displayName,
+      studentNo: participant[0].studentNo,
+    },
   };
 }
