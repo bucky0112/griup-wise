@@ -249,6 +249,9 @@ interface GroupManagementProps {
   };
 }
 
+// Network errors and non-JSON responses carry English browser messages, so only server messages reach the toast
+const ACTION_FAILED_MESSAGE = '操作失敗，請稍後再試';
+
 interface GroupingConfig {
   target_group_size: number;
   include_unsubmitted: boolean;
@@ -408,7 +411,8 @@ export default function GroupManagement({
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || '操作失敗，請稍後再試');
+        toast.error(result.message || ACTION_FAILED_MESSAGE);
+        return;
       }
 
       // Show only what the server stored, so the page never claims a visibility that did not save
@@ -417,7 +421,7 @@ export default function GroupManagement({
       toast.success(visible ? '已公開分組，公開期間自動分組會暫停' : '已取消公開，自動分組將恢復');
     } catch (error) {
       console.error('Toggle group visibility error:', error);
-      toast.error(error instanceof Error ? error.message : '操作失敗，請稍後再試');
+      toast.error(ACTION_FAILED_MESSAGE);
     } finally {
       setIsLoading(false);
     }
@@ -443,7 +447,8 @@ export default function GroupManagement({
       }
 
       if (!response.ok) {
-        throw new Error(result.message || '操作失敗，請稍後再試');
+        toast.error(result.message || ACTION_FAILED_MESSAGE);
+        return;
       }
 
       const saved: { id: string; name: string; notes: string | null } = result.group;
@@ -455,7 +460,7 @@ export default function GroupManagement({
       toast.success('組別已更新');
     } catch (error) {
       console.error('Update group details error:', error);
-      toast.error(error instanceof Error ? error.message : '操作失敗，請稍後再試');
+      toast.error(ACTION_FAILED_MESSAGE);
     } finally {
       setIsLoading(false);
     }
