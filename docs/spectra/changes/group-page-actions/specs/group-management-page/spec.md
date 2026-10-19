@@ -43,7 +43,7 @@ Clicking `編輯組別` on a group SHALL open a dialog prefilled with that group
 
 ### Requirement: Admin exports the group list as CSV
 
-Clicking `匯出分組名單` SHALL download, without a server request, a UTF-8 CSV file with a byte order mark named `<quiz title>-分組名單.csv`. The first row SHALL be `組別,學號,姓名,分數`. Each member of each group SHALL follow in group order and then member rank order, with the score left empty when the member has not submitted. Ungrouped participants SHALL follow with the group `未分組` and an empty score. Fields containing a comma, double quote or line break SHALL be quoted with inner quotes doubled, and a field starting with `=`, `+`, `-` or `@` SHALL be prefixed with `'` so spreadsheet programs do not run it as a formula. When the page has no groups and no ungrouped participants, the button SHALL be disabled.
+Clicking `匯出分組名單` SHALL download, without a server request, a UTF-8 CSV file with a byte order mark named `<quiz title>-分組名單.csv`. The first row SHALL be `組別,學號,姓名,分數`. Each member of each group SHALL follow in group order and then member rank order, with the score left empty when the member has not submitted. Ungrouped participants SHALL follow with the group `未分組` and an empty score. Fields containing a comma, double quote or line break SHALL be quoted with inner quotes doubled, and a field whose first character is `=`, `+`, `-`, `@`, a tab or a carriage return, or whose first non-whitespace character is `=`, `+`, `-` or `@`, SHALL be prefixed with `'` so spreadsheet programs do not run it as a formula. When the page has no groups and no ungrouped participants, the button SHALL be disabled.
 
 #### Scenario: Export groups and ungrouped participants
 

@@ -17,9 +17,12 @@ interface CsvUngrouped {
 const HEADER = ['組別', '學號', '姓名', '分數'];
 const UNGROUPED_LABEL = '未分組';
 
-// Names are typed by students, so a leading formula character is neutralised before a spreadsheet sees it
+// Names are typed by students, so anything a spreadsheet would start a formula from is neutralised: the OWASP
+// trigger characters (including tab and carriage return) and a trigger hidden behind leading whitespace
+const FORMULA_START = /^(?:[=+\-@\t\r]|\s*[=+\-@])/;
+
 function csvField(value: string): string {
-  const safe = /^[=+\-@]/.test(value) ? `'${value}` : value;
+  const safe = FORMULA_START.test(value) ? `'${value}` : value;
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 

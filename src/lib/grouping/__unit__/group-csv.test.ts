@@ -37,6 +37,18 @@ describe('buildGroupsCsv', () => {
     expect(row).toBe(`未分組,S001,'${name},`);
   });
 
+  it.each(['\t=1+1', ' =1+1', '  @SUM(A1)'])('prefixes %j, which spreadsheets also treat as a formula', (name) => {
+    const [, row] = rows(buildGroupsCsv([], [{ student_no: 'S001', display_name: name }]));
+
+    expect(row).toBe(`未分組,S001,'${name},`);
+  });
+
+  it('prefixes and quotes a field starting with a carriage return', () => {
+    const [, row] = rows(buildGroupsCsv([], [{ student_no: 'S001', display_name: '\r=1+1' }]));
+
+    expect(row).toBe('未分組,S001,"\'\r=1+1",');
+  });
+
   it('quotes fields with commas or line breaks', () => {
     const [, row] = rows(
       buildGroupsCsv([{ name: 'A,B', members: [{ student_no: 'S001', display_name: '王\n小明', total_score: 7.5 }] }], [])
