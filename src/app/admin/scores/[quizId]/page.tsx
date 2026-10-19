@@ -17,6 +17,7 @@ import { db } from '@/lib/db';
 import { quizzes, classes, questions, participants, submissions, answers, groupingRuns } from '@/lib/db/schema';
 import { and, eq } from 'drizzle-orm';
 import CreateGroupsForm from '@/components/admin/CreateGroupsForm';
+import { DeleteParticipantButton } from '@/components/admin/DeleteParticipantButton';
 import { resolveDefaultGroupSize } from '@/lib/grouping/default-group-size';
 
 export const dynamic = 'force-dynamic';
@@ -450,12 +451,20 @@ export default async function ScoresPage({ params }: PageProps) {
                         }
                       </TableCell>
                       <TableCell>
-                        <Link href={`/admin/answers/${quiz.id}/${participant.id}`}>
-                          <Button variant="outline" size="sm">
-                            <Eye className="w-4 h-4 mr-1" />
-                            查看作答
-                          </Button>
-                        </Link>
+                        <div className="flex gap-2">
+                          <Link href={`/admin/answers/${quiz.id}/${participant.id}`}>
+                            <Button variant="outline" size="sm">
+                              <Eye className="w-4 h-4 mr-1" />
+                              查看作答
+                            </Button>
+                          </Link>
+                          <DeleteParticipantButton
+                            quizId={quiz.id}
+                            participantId={participant.id}
+                            studentNo={participant.student_no}
+                            displayName={participant.display_name}
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -484,6 +493,7 @@ export default async function ScoresPage({ params }: PageProps) {
                     <TableHead>學號</TableHead>
                     <TableHead>姓名</TableHead>
                     <TableHead>狀態</TableHead>
+                    <TableHead>操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -495,6 +505,14 @@ export default async function ScoresPage({ params }: PageProps) {
                         <span className="inline-flex px-2 py-1 text-xs rounded-full bg-yellow-100 text-yellow-800">
                           未交卷
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        <DeleteParticipantButton
+                          quizId={quiz.id}
+                          participantId={participant.id}
+                          studentNo={participant.student_no}
+                          displayName={participant.display_name}
+                        />
                       </TableCell>
                     </TableRow>
                   ))}
