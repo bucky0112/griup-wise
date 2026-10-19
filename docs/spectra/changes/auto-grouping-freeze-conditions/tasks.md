@@ -1,6 +1,6 @@
 ## 1. Failing tests
 
-- [x] 1.1 Add `src/lib/grouping/__integration__/grouping-freeze.test.ts` with one test per scenario added or changed in this change's auto-grouping spec: "Renamed automatic run is kept", "Automatic regroup and group rename run at the same time" (repeated 10 times with `Promise.all`), both scenarios of "Group detail edits on replaced groups are rejected", and the four scenarios of "Automatic grouping pauses while groups are visible to students" (the race scenario sets `show_group_publicly` between the early check and the lock by holding `lockQuizForGrouping` in another transaction). Use the fixtures in `src/test/grouping-fixtures.ts` (`seedAutomaticRunWithTwoGroups`, `submit`, `autoGroupAfterSubmit`, `expireCooldown`, `snapshotGrouping`) and call the route `PATCH` handler with a mocked admin session, as `member-patch-route.test.ts` does. Verify: before production changes, `pnpm test` fails the rename-kept, stale-rename (404 instead of 409), concurrent-rename and visible-groups-kept tests.
+- [x] 1.1 Add `src/lib/grouping/__integration__/grouping-freeze.test.ts` with one test per scenario added or changed in this change's auto-grouping spec: "Renamed automatic run is kept", "Automatic regroup and group rename run at the same time" (repeated 10 times with `Promise.all`), both scenarios of "Group detail edits on replaced groups are rejected", and the four scenarios of "Automatic grouping pauses while groups are visible to students" (the race scenario sets `show_group_publicly` between the early check and the lock by intercepting `performGrouping` to set it before the regroup takes the lock, the same technique as the existing admin-edit race test in `auto-grouping.test.ts`). Use the fixtures in `src/test/grouping-fixtures.ts` (`seedAutomaticRunWithTwoGroups`, `submit`, `autoGroupAfterSubmit`, `expireCooldown`, `snapshotGrouping`) and call the route `PATCH` handler with a mocked admin session, as `member-patch-route.test.ts` does. Verify: before production changes, `pnpm test` fails the rename-kept, stale-rename (404 instead of 409), concurrent-rename and visible-groups-kept tests.
 
 ## 2. Group-details edits count as admin adjustments
 
@@ -8,7 +8,7 @@
 
 ## 3. Pause while visible to students
 
-- [x] 3.1 [after: 2.1] Automatic grouping pauses while groups are visible to students — per "Check visibility as a live condition, not a run flag": add `isAutomaticGroupingPaused` and `PUBLISHED_REASON`, use it in the early check of `autoGroup` and the locked check of `performGrouping`, add `'skipped_published'` to `SkippedStatus`, and export the reason in `src/test/grouping-fixtures.ts`. Verify: the four visibility tests pass, and all tests in `auto-grouping.test.ts`, `grouping-concurrency.test.ts` and `member-patch-route.test.ts` still pass.
+- [x] 3.1 [after: 2.1] Automatic grouping pauses while groups are visible to students — per "Check visibility as a live condition, not a run flag": add `automaticGroupingPause` and `PUBLISHED_REASON`, use it in the early check of `autoGroup` and the locked check of `performGrouping`, add `'skipped_published'` to `SkippedStatus`, and export the reason in `src/test/grouping-fixtures.ts`. Verify: the four visibility tests pass, and all tests in `auto-grouping.test.ts`, `grouping-concurrency.test.ts` and `member-patch-route.test.ts` still pass.
 
 ## 4. Wrap-up
 

@@ -25,7 +25,7 @@ A regroup deletes the groups it replaces, so a stale id and a never-existing id 
 
 ### Check visibility as a live condition, not a run flag
 
-Add `isAutomaticGroupingPaused(executor, quizId)` that reads the active run and `quizzes.show_group_publicly` and returns `'admin_managed' | 'published' | null` (admin-managed wins). `autoGroup` calls it in place of the early `isActiveRunAdminManaged` check and `performGrouping` calls it under the lock, throwing `GroupingSkippedError('skipped_published', PUBLISHED_REASON)` for the new case. `SkippedStatus` gains `'skipped_published'`. Alternative: mark the run admin-managed when the quiz is published; rejected because the teacher chose "hide again to resume", which a one-way flag cannot express. Reading visibility under the quiz lock is safe because `PATCH /api/admin/quizzes/[id]` updates the quiz row and so waits for the regroup's `FOR NO KEY UPDATE` lock.
+Add `automaticGroupingPause(executor, quizId)` that reads the active run joined with `quizzes.show_group_publicly` and returns a `PauseStatus` (`'skipped_admin_managed' | 'skipped_published'`) or `null` (admin-managed wins). It replaces `isActiveRunAdminManaged`: `autoGroup` calls it for the early check and `performGrouping` calls it under the lock, throwing `GroupingSkippedError(pause, PAUSE_REASONS[pause])`. `SkippedStatus` becomes `PauseStatus | 'skipped_cooldown'`. Alternative: mark the run admin-managed when the quiz is published; rejected because the teacher chose "hide again to resume", which a one-way flag cannot express. Reading visibility under the quiz lock is safe because `PATCH /api/admin/quizzes/[id]` updates the quiz row and so waits for the regroup's `FOR NO KEY UPDATE` lock.
 
 ## Implementation Contract
 
