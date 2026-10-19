@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 import { and, eq } from 'drizzle-orm';
 import { db, answers, groupMembers, participants, quizzes, submissions } from '@/lib/db';
 import type { UserSession } from '@/lib/auth';
+import { markRunAdminManaged } from '@/lib/grouping/manager';
 import {
   activeRuns,
   resetGroupingTables,
@@ -72,6 +73,12 @@ describe('DELETE /api/admin/quizzes/[id]/participants/[participantId]', () => {
     expect(await db.select().from(submissions).where(eq(submissions.id, submission.id))).toHaveLength(0);
     expect(await db.select().from(answers).where(eq(answers.submissionId, submission.id))).toHaveLength(0);
     expect(await studentLogin(quizId, '王小明', 'S001')).toBe(200);
+    const [fresh] = await db
+      .select()
+      .from(participants)
+      .where(and(eq(participants.quizId, quizId), eq(participants.studentNo, 'S001')));
+    expect(fresh.id).not.toBe(wrong.id);
+    expect(fresh.displayName).toBe('王小明');
   });
 
   it('removes only the deleted member and keeps an automatic run automatic', async () => {
@@ -91,6 +98,27 @@ describe('DELETE /api/admin/quizzes/[id]/participants/[participantId]', () => {
       membersBefore.filter((m) => m.participantId !== first.participantId).map((m) => m.participantId).sort()
     );
     expect(groupRows).toHaveLength(2);
+  });
+
+  it('keeps an admin-managed run admin-managed', async () => {
+    const { adminId, quizId, first } = await seedAutomaticRunWithTwoGroups();
+    await markRunAdminManaged(db, first.groupId);
+    asAdmin(adminId);
+
+    expect((await deleteParticipant(quizId, first.participantId)).status).toBe(200);
+
+    const [run] = await activeRuns(quizId);
+    expect((run.config as Record<string, unknown>).trigger).toBe('manual_adjusted');
+  });
+
+  it('refuses a request without an admin session with 401', async () => {
+    const { quizId } = await seedQuiz();
+    const participantId = await submit(quizId, 10);
+
+    const response = await deleteParticipant(quizId, participantId);
+
+    expect(response.status).toBe(401);
+    expect(await participantExists(participantId)).toBe(true);
   });
 
   it('refuses another admin with 403 and keeps the participant', async () => {
