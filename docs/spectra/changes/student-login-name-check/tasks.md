@@ -10,4 +10,6 @@
 ## 3. Wrap-up
 
 - [x] 3.1 [after: 2.2] Run `pnpm test` and `pnpm build`; both exit 0. `pnpm lint` adds no problems compared with the branch base.
-- [ ] 3.2 [after: 3.1] Acceptance locally or on staging: logging in at `/quiz/[quizId]/login` with an existing student number and a different name shows the toast `此學號已由其他姓名登入，請確認姓名與學號，或洽詢老師`, and the same name enters the quiz. Record the result in the PR and close GitHub issue #7.
+- [x] 3.2 [after: 3.1] Acceptance locally or on staging: logging in at `/quiz/[quizId]/login` with an existing student number and a different name shows the toast `此學號已由其他姓名登入，請確認姓名與學號，或洽詢老師`, and the same name enters the quiz. Record the result in the PR and close GitHub issue #7.
+
+Note on 3.2 (2026-10-19): accepted locally instead of staging, with PR #31 and #32 merged on a throwaway branch against the local database. `/quiz/[quizId]/login` with 王小明／S001, then 李大華／s001 showed the toast `此學號已由其他姓名登入，請確認姓名與學號，或洽詢老師` and stayed on the login page; ` 王小明 ` with surrounding spaces entered the quiz as 王小明 (S001).
