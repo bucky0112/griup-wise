@@ -128,6 +128,15 @@ describe('automatic grouping freeze conditions', () => {
       expect(await snapshotGrouping(quizId)).toEqual(before);
     });
 
+    it('rejects an edit naming a group that never existed with 409', async () => {
+      const { adminId } = await seedAutomaticRunWithTwoGroups();
+      asAdmin(adminId);
+
+      const response = await patchGroup('00000000-0000-4000-8000-000000000000', { name: '火箭隊' });
+
+      expect(response).toEqual({ status: 409, body: { message: STALE_MESSAGE } });
+    });
+
     it('rejects an edit from an admin who does not own the quiz with 403', async () => {
       const { groupRows } = await seedAutomaticRunWithTwoGroups();
       asAdmin('00000000-0000-4000-8000-000000000000');
@@ -160,6 +169,20 @@ describe('automatic grouping freeze conditions', () => {
       expect(event.shouldTriggerGrouping).toBe(false);
       expect(event.oldRankingHash ?? '').toBe('');
       expect(event.newRankingHash ?? '').toBe('');
+    });
+
+    it('reports the admin-managed reason when the visible run is also admin-managed', async () => {
+      const { adminId, quizId, groupRows } = await seedAutomaticRunWithTwoGroups();
+      asAdmin(adminId);
+      expect((await patchGroup(groupRows[0].id, { name: '火箭隊' })).status).toBe(200);
+      await setVisibility(quizId, true);
+      await expireCooldown(quizId);
+
+      const p5 = await submit(quizId, 50);
+      const result = await autoGroupAfterSubmit(quizId, p5, twoPerGroup);
+
+      expect(result.success).toBe(false);
+      expect(result.triggerEvaluation?.reason).toBe(ADMIN_MANAGED_REASON);
     });
 
     it('resumes automatic grouping after the groups are hidden again', async () => {
