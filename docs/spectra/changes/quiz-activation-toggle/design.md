@@ -30,7 +30,7 @@ Quizzes have `is_active` (default false). Student login (`authenticateStudent`),
 ## Implementation Contract
 
 - **Behavior**: as in the quiz-management delta spec — PATCH accepts `is_active`; `啟用測驗`/`停用測驗` on both pages, deactivate behind a confirmation dialog, the two toasts, failures keep state; share dialog warning for inactive quizzes.
-- **Interface**: PATCH body `{ show_group_publicly?: boolean; is_active?: boolean }`, response `quiz: { id, title, show_group_publicly, is_active }`; `QuizActivationToggle(props: { quizId: string; isActive: boolean; onChange?: (isActive: boolean) => void })`; `ShareQuizLink` prop `isActive?: boolean`.
+- **Interface**: PATCH body `{ show_group_publicly?: boolean; is_active?: boolean }`, response `quiz: { id, title, show_group_publicly, is_active }`; `QuizActivationToggle(props: { quizId: string; isActive: boolean; onChange?: (isActive: boolean) => void; size?: 'default' | 'sm' | 'lg' })` (`size` matches `ShareQuizLink` so the header buttons line up); `ShareQuizLink` prop `isActive?: boolean`.
 - **Failure modes**: non-2xx shows the server `message` (fallback `操作失敗，請稍後再試`) and keeps the state; network errors show the fallback.
 - **Acceptance**: `src/app/api/admin/quizzes/[id]/__integration__/route.test.ts` covers the three API scenarios, including the student-login effect; UI scenarios are accepted in a local browser, since the suite has no DOM; `pnpm test`, `pnpm build`, `pnpm lint` pass.
 - **Scope**: in scope — the PATCH route, the toggle component, the two pages, `ShareQuizLink`. Out of scope — `QuizForm`, student routes, other admin pages.
