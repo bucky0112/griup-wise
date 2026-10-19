@@ -36,6 +36,7 @@ export function resetGroupingTables() {
 
 export const COOLDOWN_REASON = 'In cooldown period (5 minutes)';
 export const ADMIN_MANAGED_REASON = 'Active grouping is admin-managed';
+export const PUBLISHED_REASON = 'Grouping is visible to students';
 
 export async function seedQuiz() {
   const [admin] = await db

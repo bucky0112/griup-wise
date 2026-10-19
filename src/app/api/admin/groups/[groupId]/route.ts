@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
-import { db } from '@/lib/db';
-import { groups, groupingRuns, quizzes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { STALE_GROUPING_MESSAGE, groupingManager, type GroupDetailsResult } from '@/lib/grouping/manager';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -14,6 +12,13 @@ const updateGroupSchema = z.object({
   notes: z.string().max(500).optional(),
   order_index: z.number().min(1).optional(),
 });
+
+// This route has always answered in Chinese; the manager's reasons map onto those messages
+const FAILURE_RESPONSES: Record<Extract<GroupDetailsResult, { success: false }>['reason'], { message: string; status: number }> = {
+  stale_grouping: { message: STALE_GROUPING_MESSAGE, status: 409 },
+  forbidden: { message: '無權限編輯此分組', status: 403 },
+  order_conflict: { message: '該排序位置已被其他組別使用', status: 400 },
+};
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
   const { groupId } = await params;
@@ -27,36 +32,6 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Verify group exists and admin has permission
-    const groupData = await db
-      .select({
-        id: groups.id,
-        quiz_id: groups.quizId,
-        name: groups.name,
-        notes: groups.notes,
-        order_index: groups.orderIndex,
-        created_by: quizzes.createdBy,
-      })
-      .from(groups)
-      .innerJoin(groupingRuns, eq(groups.groupingRunId, groupingRuns.id))
-      .innerJoin(quizzes, eq(groups.quizId, quizzes.id))
-      .where(eq(groups.id, groupId))
-      .limit(1);
-
-    if (groupData.length === 0) {
-      return NextResponse.json(
-        { message: '分組不存在' },
-        { status: 404 }
-      );
-    }
-
-    if (groupData[0].created_by !== session.id) {
-      return NextResponse.json(
-        { message: '無權限編輯此分組' },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json();
     const updates = updateGroupSchema.parse(body);
 
@@ -67,45 +42,17 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Check if order_index conflicts with existing groups in same quiz
-    if (updates.order_index !== undefined) {
-      const conflictingGroup = await db
-        .select({ id: groups.id })
-        .from(groups)
-        .where(and(
-          eq(groups.quizId, groupData[0].quiz_id),
-          eq(groups.orderIndex, updates.order_index),
-          // ne(groups.id, groupId) - exclude current group
-        ))
-        .limit(1);
+    // The manager enforces ownership, the quiz lock and the active-run check; this route only maps responses
+    const result = await groupingManager.updateGroupDetails(groupId, updates, session.id);
 
-      if (conflictingGroup.length > 0 && conflictingGroup[0].id !== groupId) {
-        return NextResponse.json(
-          { message: '該排序位置已被其他組別使用' },
-          { status: 400 }
-        );
-      }
+    if (!result.success) {
+      const { message, status } = FAILURE_RESPONSES[result.reason];
+      return NextResponse.json({ message }, { status });
     }
-
-    // Update the group
-    const updatedGroup = await db
-      .update(groups)
-      .set({
-        ...(updates.name && { name: updates.name }),
-        ...(updates.notes !== undefined && { notes: updates.notes }),
-        ...(updates.order_index && { orderIndex: updates.order_index }),
-      })
-      .where(eq(groups.id, groupId))
-      .returning();
 
     return NextResponse.json({
       message: '分組更新成功',
-      group: {
-        id: updatedGroup[0].id,
-        name: updatedGroup[0].name,
-        notes: updatedGroup[0].notes,
-        order_index: updatedGroup[0].orderIndex,
-      },
+      group: result.group,
     });
 
   } catch (error) {
