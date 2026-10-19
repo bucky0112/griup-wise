@@ -1,6 +1,6 @@
 ## 1. CSV export
 
-- [x] 1.1 Admin exports the group list as CSV — per "Build the CSV in a pure module": write `src/lib/grouping/__unit__/group-csv.test.ts` first with the "CSV content" example of the delta spec (BOM, header, member order, empty score, `未分組` rows, quoting and the `'` formula prefix for each of `=`, `+`, `-`, `@`), confirm it fails because `src/lib/grouping/group-csv.ts` does not exist, then add `buildGroupsCsv`. Verify: the new unit tests pass.
+- [x] 1.1 Admin exports the group list as CSV — per "Build the CSV in a pure module": write `src/lib/grouping/__unit__/group-csv.test.ts` first with the "CSV content" example of the delta spec (BOM, header, member order, empty score, `未分組` rows, quoting and the `'` formula prefix for each of `=`, `+`, `-`, `@`, tab, carriage return and whitespace before `=`), confirm it fails because `src/lib/grouping/group-csv.ts` does not exist, then add `buildGroupsCsv`. Verify: the new unit tests pass.
 - [x] 1.2 [after: 1.1] Per "Pass title and visibility from the server page": `src/app/admin/groups/[id]/page.tsx` passes `quizTitle` and `initialShowGroupPublicly`, and `匯出分組名單` in `GroupManagement` downloads `buildGroupsCsv` output as `<quiz title>-分組名單.csv`, disabled when there are no groups and no ungrouped participants. Verify: `pnpm build` passes and, in a local browser, the downloaded file opens with the expected rows.
 
 ## 2. Visibility toggle and edit dialog
