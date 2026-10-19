@@ -19,13 +19,15 @@ interface ShareQuizLinkProps {
   quizTitle: string;
   variant?: 'default' | 'outline' | 'ghost';
   size?: 'default' | 'sm' | 'lg';
+  isActive?: boolean;
 }
 
 export function ShareQuizLink({
   quizId,
   quizTitle,
   variant = 'outline',
-  size = 'sm'
+  size = 'sm',
+  isActive = true,
 }: ShareQuizLinkProps) {
   const [copied, setCopied] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -78,6 +80,11 @@ export function ShareQuizLink({
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
+          {!isActive && (
+            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-sm text-amber-900">
+              此測驗尚未啟用，學生目前無法用連結進入，請先按「啟用測驗」
+            </div>
+          )}
           <div className="flex items-center space-x-2">
             <div className="grid flex-1 gap-2">
               <label htmlFor="quiz-link" className="text-sm font-medium">
