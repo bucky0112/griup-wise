@@ -69,15 +69,27 @@ const editFailure = (reason: EditFailureReason): GroupEditResult => ({
   reason,
 });
 const staleEdit = (): GroupEditResult => editFailure('stale_grouping');
+
+export interface GroupDetailsUpdate {
+  name?: string;
+  notes?: string;
+  order_index?: number;
+}
+
+export type GroupDetailsResult =
+  | { success: true; group: { id: string; name: string; notes: string | null; order_index: number } }
+  | { success: false; reason: 'stale_grouping' | 'forbidden' | 'order_conflict' };
 const staleBatch = (): BatchOperationResult => ({ ...staleEdit(), affectedParticipants: 0, affectedGroups: 0 });
 const forbiddenBatch = (): BatchOperationResult => ({ ...editFailure('forbidden'), affectedParticipants: 0, affectedGroups: 0 });
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
 const ADMIN_MANAGED_REASON = 'Active grouping is admin-managed';
+export const PUBLISHED_REASON = 'Grouping is visible to students';
 const COOLDOWN_REASON = `In cooldown period (${defaultTriggerConfig.cooldownMinutes} minutes)`;
 
-type SkippedStatus = 'skipped_admin_managed' | 'skipped_cooldown';
+type PauseStatus = 'skipped_admin_managed' | 'skipped_published';
+type SkippedStatus = PauseStatus | 'skipped_cooldown';
 
 // Raised inside the locked regroup transaction when the regroup must not run; nothing has been written yet.
 class GroupingSkippedError extends Error {
@@ -127,14 +139,25 @@ function isAutomaticRun(config: unknown): boolean {
   return (config as { trigger?: string } | null)?.trigger === 'automatic';
 }
 
-async function isActiveRunAdminManaged(executor: DbExecutor, quizId: string): Promise<boolean> {
+// Why automatic grouping must leave the active run alone, if it must. Visibility is read live, so hiding the
+// groups again resumes automatic grouping; a quiz without an active run is never paused.
+async function automaticGroupingPause(executor: DbExecutor, quizId: string): Promise<PauseStatus | null> {
   const [activeRun] = await executor
-    .select({ config: groupingRuns.config })
+    .select({ config: groupingRuns.config, showGroupPublicly: quizzes.showGroupPublicly })
     .from(groupingRuns)
+    .innerJoin(quizzes, eq(groupingRuns.quizId, quizzes.id))
     .where(and(eq(groupingRuns.quizId, quizId), eq(groupingRuns.status, 'active')))
     .limit(1);
-  return !!activeRun && !isAutomaticRun(activeRun.config);
+  if (!activeRun) return null;
+  if (!isAutomaticRun(activeRun.config)) return 'skipped_admin_managed';
+  if (activeRun.showGroupPublicly) return 'skipped_published';
+  return null;
 }
+
+const PAUSE_REASONS: Record<PauseStatus, string> = {
+  skipped_admin_managed: ADMIN_MANAGED_REASON,
+  skipped_published: PUBLISHED_REASON,
+};
 
 function skippedResult(evaluation: TriggerEvaluation, config: GroupingConfig): GroupingResult {
   return {
@@ -207,9 +230,10 @@ export class GroupingManager {
       return skippedResult(skipped, validatedConfig);
     };
 
-    // Admin-managed quizzes are never regrouped automatically, so skip before any ranking work.
-    // The locked check in performGrouping still catches runs that become admin-managed after this read.
-    if (await isActiveRunAdminManaged(db, quizId)) {
+    // Admin-managed or student-visible groups are not regrouped automatically, so skip before any ranking work.
+    // The locked check in performGrouping still catches pauses that start after this read.
+    const pause = await automaticGroupingPause(db, quizId);
+    if (pause) {
       const [{ submittedCount }] = await db
         .select({ submittedCount: count() })
         .from(submissions)
@@ -217,13 +241,13 @@ export class GroupingManager {
       return skip(
         {
           shouldTrigger: false,
-          reason: ADMIN_MANAGED_REASON,
+          reason: PAUSE_REASONS[pause],
           eventType: 'submission',
           participantCount: submittedCount,
           rankingChanged: false,
           inCooldown: false,
         },
-        'skipped_admin_managed'
+        pause
       );
     }
 
@@ -407,6 +431,54 @@ export class GroupingManager {
       await markRunAdminManaged(tx, groupId);
 
       return { success: true, message: 'Participant removed successfully', changedGroups: [groupId] };
+    });
+  }
+
+  /**
+   * Rename a group of the active run or change its notes or order; this counts as an admin adjustment
+   */
+  async updateGroupDetails(groupId: string, updates: GroupDetailsUpdate, adminId: string): Promise<GroupDetailsResult> {
+    // A regroup deletes the groups it replaces, so an unknown id is treated as stale like the member edits
+    const [group] = await db.select({ quizId: groups.quizId }).from(groups).where(eq(groups.id, groupId)).limit(1);
+    if (!group) {
+      return { success: false, reason: 'stale_grouping' };
+    }
+    if (!(await isQuizOwnedBy(group.quizId, adminId))) {
+      return { success: false, reason: 'forbidden' };
+    }
+
+    return await db.transaction(async (tx) => {
+      await lockQuizForGrouping(tx, group.quizId);
+      if (!(await activeGroupIds(tx, group.quizId)).has(groupId)) {
+        return { success: false, reason: 'stale_grouping' } as const;
+      }
+
+      if (updates.order_index !== undefined) {
+        const [conflicting] = await tx
+          .select({ id: groups.id })
+          .from(groups)
+          .where(and(eq(groups.quizId, group.quizId), eq(groups.orderIndex, updates.order_index)))
+          .limit(1);
+        if (conflicting && conflicting.id !== groupId) {
+          return { success: false, reason: 'order_conflict' } as const;
+        }
+      }
+
+      const [updated] = await tx
+        .update(groups)
+        .set({
+          ...(updates.name && { name: updates.name }),
+          ...(updates.notes !== undefined && { notes: updates.notes }),
+          ...(updates.order_index && { orderIndex: updates.order_index }),
+        })
+        .where(eq(groups.id, groupId))
+        .returning();
+      await markRunAdminManaged(tx, groupId);
+
+      return {
+        success: true,
+        group: { id: updated.id, name: updated.name, notes: updated.notes, order_index: updated.orderIndex },
+      } as const;
     });
   }
 
@@ -603,9 +675,11 @@ export class GroupingManager {
       await lockQuizForGrouping(tx, quizId);
 
       if (trigger === 'automatic') {
-        // Read under the quiz lock, so no admin edit can commit between this check and the regroup
-        if (await isActiveRunAdminManaged(tx, quizId)) {
-          throw new GroupingSkippedError('skipped_admin_managed', ADMIN_MANAGED_REASON);
+        // Read under the quiz lock, so no admin edit or visibility change can commit between this check and the
+        // regroup; changing show_group_publicly updates the quiz row and waits for this lock
+        const pause = await automaticGroupingPause(tx, quizId);
+        if (pause) {
+          throw new GroupingSkippedError(pause, PAUSE_REASONS[pause]);
         }
 
         // Submissions that passed the event-based cooldown while another regroup was running see its run here
