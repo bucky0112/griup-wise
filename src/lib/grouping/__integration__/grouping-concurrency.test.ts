@@ -110,9 +110,9 @@ describe('grouping concurrency', () => {
         await lockQuizForGrouping(tx, quizId);
         // Login runs on another pooled connection; it must finish before this lock is released
         loginOutcome = await Promise.race([
-          authenticateStudent('Late Student', 'L001', quizId).then(async (session) => {
-            if (!session || session.type !== 'student') return 'rejected';
-            await db.insert(submissions).values({ quizId, participantId: session.participantId, totalScore: '10' });
+          authenticateStudent('Late Student', 'L001', quizId).then(async (result) => {
+            if (!result.ok) return 'rejected';
+            await db.insert(submissions).values({ quizId, participantId: result.session.participantId, totalScore: '10' });
             return 'logged-in-and-submitted';
           }),
           new Promise<string>((resolve) => setTimeout(() => resolve('blocked'), 2000)),
