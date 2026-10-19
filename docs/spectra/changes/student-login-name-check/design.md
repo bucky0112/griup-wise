@@ -27,7 +27,7 @@
 
 ### Insert with ON CONFLICT DO NOTHING, then re-read
 
-The first-login insert uses `onConflictDoNothing({ target: [participants.quizId, participants.studentNo] })`. When it returns no row, another login inserted the same student number first; the function re-reads that participant and applies the name check. Alternative: catch the unique-violation error code; rejected because it couples to driver error shapes and still needs the re-read. No lock is taken, so student login keeps not waiting on the grouping lock (auto-grouping spec, "Students keep working during a grouping operation").
+The first-login insert uses `onConflictDoNothing()` without a conflict target: `unique_key` is derived from the same quiz and student number, so either `participants_quiz_student_unique` or `participants_unique_key_unique` can be the index a concurrent insert collides on, and a targeted clause would still raise on the other. When it returns no row, another login inserted the same student number first; the function re-reads that participant and applies the name check. Alternative: catch the unique-violation error code; rejected because it couples to driver error shapes and still needs the re-read. No lock is taken, so student login keeps not waiting on the grouping lock (auto-grouping spec, "Students keep working during a grouping operation").
 
 ## Implementation Contract
 
