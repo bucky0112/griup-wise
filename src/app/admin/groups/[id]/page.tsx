@@ -304,11 +304,6 @@ export default async function GroupsDetailPage({
               <h1 className="text-2xl font-bold text-gray-900">
                 分組管理：{quizInfo.title}
               </h1>
-              {groupsData.run_info && (
-                <p className="text-gray-600">
-                  分組時間：{new Date(groupsData.run_info.created_at).toLocaleString('zh-TW')}
-                </p>
-              )}
             </div>
             <div className="flex space-x-4">
               <Link href="/admin/groups">

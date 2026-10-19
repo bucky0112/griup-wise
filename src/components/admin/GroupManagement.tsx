@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { sortingLabel } from '@/lib/grouping/strategy-label';
 import { buildGroupsCsv } from '@/lib/grouping/group-csv';
+import { formatGroupingTime } from '@/lib/grouping/grouping-time';
 import {
   DndContext,
   closestCenter,
@@ -838,6 +839,10 @@ export default function GroupManagement({
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="col-span-2 md:col-span-4">
+                <span className="font-medium">分組時間：</span>
+                <span>{formatGroupingTime(data.run_info.created_at)}</span>
+              </div>
               <div>
                 <span className="font-medium">目標人數：</span>
                 <span>{data.run_info.config.target_group_size} 人/組</span>
