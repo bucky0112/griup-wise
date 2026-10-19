@@ -37,7 +37,7 @@ describe('buildGroupsCsv', () => {
     expect(row).toBe(`未分組,S001,'${name},`);
   });
 
-  it.each(['\t=1+1', ' =1+1', '  @SUM(A1)'])('prefixes %j, which spreadsheets also treat as a formula', (name) => {
+  it.each(['\tabc', '\t=1+1', ' =1+1', '  @SUM(A1)'])('prefixes %j, which spreadsheets also treat as a formula', (name) => {
     const [, row] = rows(buildGroupsCsv([], [{ student_no: 'S001', display_name: name }]));
 
     expect(row).toBe(`未分組,S001,'${name},`);
