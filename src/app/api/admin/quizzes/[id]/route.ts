@@ -11,6 +11,7 @@ interface RouteParams {
 
 const updateQuizSchema = z.object({
   show_group_publicly: z.boolean().optional(),
+  is_active: z.boolean().optional(),
 });
 
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
@@ -69,6 +70,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         ...(updates.show_group_publicly !== undefined && {
           showGroupPublicly: updates.show_group_publicly
         }),
+        ...(updates.is_active !== undefined && { isActive: updates.is_active }),
       })
       .where(eq(quizzes.id, quizId))
       .returning();
@@ -79,6 +81,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         id: updatedQuiz[0].id,
         title: updatedQuiz[0].title,
         show_group_publicly: updatedQuiz[0].showGroupPublicly,
+        is_active: updatedQuiz[0].isActive,
       },
     });
 

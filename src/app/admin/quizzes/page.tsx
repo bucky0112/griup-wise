@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { ShareQuizLink } from '@/components/admin/ShareQuizLink';
+import { QuizActivationToggle } from '@/components/admin/QuizActivationToggle';
 
 export default async function QuizzesManagement() {
   const session = await getSession();
@@ -97,7 +98,9 @@ export default async function QuizzesManagement() {
                           <ShareQuizLink
                             quizId={quiz.id}
                             quizTitle={quiz.title}
+                            isActive={quiz.isActive}
                           />
+                          <QuizActivationToggle quizId={quiz.id} isActive={quiz.isActive} />
                           <Link href={`/admin/quizzes/${quiz.id}/questions`}>
                             <Button variant="outline" size="sm">管理題目</Button>
                           </Link>

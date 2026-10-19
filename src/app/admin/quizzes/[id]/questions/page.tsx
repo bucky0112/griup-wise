@@ -9,6 +9,7 @@ import { AddQuestionForm } from '@/components/admin/AddQuestionForm';
 import { EditQuestionForm } from '@/components/admin/EditQuestionForm';
 import { CodeBlock } from '@/components/ui/code-block';
 import { ShareQuizLink } from '@/components/admin/ShareQuizLink';
+import { QuizActivationToggle } from '@/components/admin/QuizActivationToggle';
 import { toast } from 'sonner';
 import { Trash2, Edit } from 'lucide-react';
 
@@ -187,11 +188,20 @@ export default function QuestionsManagement({ params }: Props) {
             </div>
             <div className="flex space-x-4">
               {quiz && (
-                <ShareQuizLink
-                  quizId={quizId}
-                  quizTitle={quiz.title}
-                  variant="default"
-                />
+                <>
+                  <ShareQuizLink
+                    quizId={quizId}
+                    quizTitle={quiz.title}
+                    variant="default"
+                    isActive={quiz.isActive}
+                  />
+                  <QuizActivationToggle
+                    quizId={quizId}
+                    isActive={quiz.isActive}
+                    size="default"
+                    onChange={(isActive) => setQuiz({ ...quiz, isActive })}
+                  />
+                </>
               )}
               <Link href="/admin/quizzes">
                 <Button variant="outline">返回測驗列表</Button>
