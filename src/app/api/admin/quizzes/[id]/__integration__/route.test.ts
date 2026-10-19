@@ -84,6 +84,22 @@ describe('PATCH /api/admin/quizzes/[id] is_active', () => {
     expect(await isActive(quizId)).toBe(false);
   });
 
+  it('updates is_active together with show_group_publicly', async () => {
+    const { adminId, quizId } = await seedQuiz();
+    await db.update(quizzes).set({ isActive: false }).where(eq(quizzes.id, quizId));
+    asAdmin(adminId);
+
+    const response = await patchQuiz(quizId, { is_active: true, show_group_publicly: true });
+
+    expect(response.status).toBe(200);
+    expect(response.body.quiz).toMatchObject({ is_active: true, show_group_publicly: true });
+    const [stored] = await db
+      .select({ isActive: quizzes.isActive, showGroupPublicly: quizzes.showGroupPublicly })
+      .from(quizzes)
+      .where(eq(quizzes.id, quizId));
+    expect(stored).toEqual({ isActive: true, showGroupPublicly: true });
+  });
+
   it('rejects a non-boolean is_active with 400', async () => {
     const { adminId, quizId } = await seedQuiz();
     asAdmin(adminId);
