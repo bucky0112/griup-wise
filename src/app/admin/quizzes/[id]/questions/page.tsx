@@ -280,7 +280,7 @@ export default function QuestionsManagement({ params }: Props) {
                             </Button>
                           </div>
                         </div>
-                        <p className="text-gray-700 mb-2">{question.prompt}</p>
+                        <p className="text-gray-700 mb-2 whitespace-pre-wrap">{question.prompt}</p>
                         {question.codeSnippet && (
                           <div className="mb-3">
                             <CodeBlock

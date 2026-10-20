@@ -188,7 +188,7 @@ export function EditQuestionForm({ quizId, question, onSave, onCancel }: EditQue
       {/* Question Prompt */}
       <div>
         <Label htmlFor="prompt">題目內容</Label>
-        <Input
+        <Textarea
           id="prompt"
           placeholder="請輸入題目內容"
           {...register('prompt')}

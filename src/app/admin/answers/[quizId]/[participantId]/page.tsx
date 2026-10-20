@@ -475,7 +475,7 @@ export default async function StudentAnswerDetailsPage({ params }: PageProps) {
                           {isCorrect ? '正確' : '錯誤'}
                         </Badge>
                       </div>
-                      <p className="text-gray-700">{answer.question.prompt}</p>
+                      <p className="text-gray-700 whitespace-pre-wrap">{answer.question.prompt}</p>
                     </div>
                     <div className="text-right ml-4">
                       <div className="text-lg font-medium">
