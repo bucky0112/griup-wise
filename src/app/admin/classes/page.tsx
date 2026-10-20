@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { classes, quizzes, participants } from '@/lib/db/schema';
-import { eq, count } from 'drizzle-orm';
+import { and, eq, count, isNull } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -27,8 +27,8 @@ export default async function ClassesManagement() {
       quizzesCount: count(quizzes.id),
     })
     .from(classes)
-    .leftJoin(quizzes, eq(quizzes.classId, classes.id))
-    .where(eq(classes.createdBy, session.id))
+    .leftJoin(quizzes, and(eq(quizzes.classId, classes.id), isNull(quizzes.deletedAt)))
+    .where(and(eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
     .groupBy(classes.id, classes.title, classes.expectedSize, classes.targetGroupSize, classes.createdAt)
     .orderBy(classes.createdAt);
 
@@ -39,7 +39,7 @@ export default async function ClassesManagement() {
         .select({ count: count(participants.id) })
         .from(participants)
         .innerJoin(quizzes, eq(quizzes.id, participants.quizId))
-        .where(eq(quizzes.classId, classItem.id));
+        .where(and(eq(quizzes.classId, classItem.id), isNull(quizzes.deletedAt)));
 
       return {
         ...classItem,

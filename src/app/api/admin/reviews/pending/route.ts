@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { questions, submissions, answers, participants, quizzes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export async function GET() {
   try {
@@ -42,7 +42,8 @@ export async function GET() {
       .where(
         and(
           eq(answers.reviewStatus, 'pending'),
-          eq(quizzes.createdBy, session.id)
+          eq(quizzes.createdBy, session.id),
+          isNull(quizzes.deletedAt)
         )
       );
 

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, classes, participants, submissions, groupingRuns, groups } from '@/lib/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 
 export async function GET() {
   try {
@@ -26,7 +26,7 @@ export async function GET() {
       })
       .from(quizzes)
       .innerJoin(classes, eq(quizzes.classId, classes.id))
-      .where(eq(quizzes.createdBy, session.id))
+      .where(and(eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
       .orderBy(quizzes.createdAt);
 
     // Get statistics for each quiz

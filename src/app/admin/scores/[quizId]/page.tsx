@@ -15,7 +15,7 @@ import { Eye } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { db } from '@/lib/db';
 import { quizzes, classes, questions, participants, submissions, answers, groupingRuns } from '@/lib/db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import CreateGroupsForm from '@/components/admin/CreateGroupsForm';
 import { DeleteParticipantButton } from '@/components/admin/DeleteParticipantButton';
 import { resolveDefaultGroupSize } from '@/lib/grouping/default-group-size';
@@ -127,7 +127,7 @@ async function fetchScoresData(quizId: string, adminId: string): Promise<ScoresD
     })
     .from(quizzes)
     .innerJoin(classes, eq(quizzes.classId, classes.id))
-    .where(eq(quizzes.id, quizId))
+    .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
     .limit(1);
 
   if (quiz.length === 0) {

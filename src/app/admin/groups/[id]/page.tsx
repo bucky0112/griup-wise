@@ -15,7 +15,7 @@ import {
   participants,
   submissions
 } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 
 interface Member {
   participant_id: string;
@@ -80,7 +80,7 @@ async function fetchQuizInfo(quizId: string, adminId: string): Promise<QuizInfo>
     })
     .from(quizzes)
     .innerJoin(classes, eq(quizzes.classId, classes.id))
-    .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, adminId)))
+    .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, adminId), isNull(quizzes.deletedAt)))
     .limit(1);
 
   if (quiz.length === 0) {
@@ -99,7 +99,7 @@ async function fetchGroupsData(quizId: string, adminId: string, runId?: string):
       created_by: quizzes.createdBy,
     })
     .from(quizzes)
-    .where(eq(quizzes.id, quizId))
+    .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
     .limit(1);
 
   if (quiz.length === 0) {

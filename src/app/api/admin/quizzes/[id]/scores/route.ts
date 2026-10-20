@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, questions, participants, submissions, answers } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         created_by: quizzes.createdBy,
       })
       .from(quizzes)
-      .where(eq(quizzes.id, quizId))
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {

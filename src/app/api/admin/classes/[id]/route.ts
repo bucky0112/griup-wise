@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { classes, quizzes, participants } from '@/lib/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 const classSchema = z.object({
@@ -31,7 +31,7 @@ export async function GET(
     const classData = await db
       .select()
       .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id)))
+      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
       .limit(1);
 
     if (classData.length === 0) {
@@ -50,7 +50,7 @@ export async function GET(
         createdAt: quizzes.createdAt,
       })
       .from(quizzes)
-      .where(eq(quizzes.classId, classId))
+      .where(and(eq(quizzes.classId, classId), isNull(quizzes.deletedAt)))
       .orderBy(quizzes.createdAt);
 
     // Get participants count
@@ -58,7 +58,7 @@ export async function GET(
       .select({ count: count(participants.id) })
       .from(participants)
       .innerJoin(quizzes, eq(quizzes.id, participants.quizId))
-      .where(eq(quizzes.classId, classId));
+      .where(and(eq(quizzes.classId, classId), isNull(quizzes.deletedAt)));
 
     return NextResponse.json({
       class: {
@@ -99,7 +99,7 @@ export async function PUT(
     const existingClass = await db
       .select()
       .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id)))
+      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
       .limit(1);
 
     if (existingClass.length === 0) {
@@ -163,7 +163,7 @@ export async function DELETE(
     const existingClass = await db
       .select()
       .from(classes)
-      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id)))
+      .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
       .limit(1);
 
     if (existingClass.length === 0) {
@@ -177,7 +177,7 @@ export async function DELETE(
     const relatedQuizzes = await db
       .select()
       .from(quizzes)
-      .where(eq(quizzes.classId, classId))
+      .where(and(eq(quizzes.classId, classId), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (relatedQuizzes.length > 0) {
@@ -187,8 +187,10 @@ export async function DELETE(
       );
     }
 
+    // Soft delete: a hard delete would cascade to the soft-deleted quizzes and erase their data
     await db
-      .delete(classes)
+      .update(classes)
+      .set({ deletedAt: new Date() })
       .where(eq(classes.id, classId));
 
     return NextResponse.json({

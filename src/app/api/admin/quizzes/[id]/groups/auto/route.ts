@@ -3,7 +3,7 @@ import { getSession } from '@/lib/session';
 import { groupingManager } from '@/lib/grouping/manager';
 import { validateGroupingConfig } from '@/lib/grouping/config';
 import { db, quizzes } from '@/lib/db';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -40,7 +40,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         createdBy: quizzes.createdBy,
       })
       .from(quizzes)
-      .where(eq(quizzes.id, quizId))
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {

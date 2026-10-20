@@ -24,6 +24,7 @@ export const classes = pgTable('classes', {
   targetGroupSize: integer('target_group_size'), // 理想每組人數（純參考）
   createdBy: uuid('created_by').notNull().references(() => admins.id), // 管理者識別
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), // 軟刪除時間，null 表示未刪除
 });
 
 // Quizzes table (測驗)
@@ -35,6 +36,7 @@ export const quizzes = pgTable('quizzes', {
   showGroupPublicly: boolean('show_group_publicly').default(false).notNull(), // 是否讓學生可看分組名單
   createdBy: uuid('created_by').notNull().references(() => admins.id), // 測驗建立者
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp('deleted_at', { withTimezone: true }), // 軟刪除時間，null 表示未刪除
 }, (table) => ({
   classActiveIndex: index('quiz_class_active_idx').on(table.classId, table.isActive),
 }));

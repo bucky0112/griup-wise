@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { questions, quizzes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 const createQuestionSchema = z.object({
@@ -39,7 +39,7 @@ export async function POST(
     const quiz = await db
       .select()
       .from(quizzes)
-      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id)))
+      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {
@@ -177,7 +177,7 @@ export async function GET(
     const quiz = await db
       .select()
       .from(quizzes)
-      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id)))
+      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {

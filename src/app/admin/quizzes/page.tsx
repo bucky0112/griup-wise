@@ -2,13 +2,14 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, classes } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
 import { ShareQuizLink } from '@/components/admin/ShareQuizLink';
 import { QuizActivationToggle } from '@/components/admin/QuizActivationToggle';
+import { DeleteQuizButton } from '@/components/admin/DeleteQuizButton';
 
 export default async function QuizzesManagement() {
   const session = await getSession();
@@ -27,7 +28,7 @@ export default async function QuizzesManagement() {
     })
     .from(quizzes)
     .innerJoin(classes, eq(quizzes.classId, classes.id))
-    .where(eq(quizzes.createdBy, session.id))
+    .where(and(eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
     .orderBy(quizzes.createdAt);
 
   return (
@@ -110,6 +111,7 @@ export default async function QuizzesManagement() {
                           <Link href={`/admin/groups/${quiz.id}`}>
                             <Button variant="outline" size="sm">管理分組</Button>
                           </Link>
+                          <DeleteQuizButton quizId={quiz.id} quizTitle={quiz.title} />
                         </div>
                       </div>
                     </div>
