@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { db } from '@/lib/db';
 import { quizzes, classes, participants, submissions, groupingRuns, groups } from '@/lib/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 
 interface OverviewData {
   statistics: {
@@ -42,7 +42,7 @@ async function fetchOverviewData(adminId: string): Promise<OverviewData> {
     })
     .from(quizzes)
     .innerJoin(classes, eq(quizzes.classId, classes.id))
-    .where(eq(quizzes.createdBy, adminId))
+    .where(and(eq(quizzes.createdBy, adminId), isNull(quizzes.deletedAt)))
     .orderBy(quizzes.createdAt);
 
   // Get statistics for each quiz

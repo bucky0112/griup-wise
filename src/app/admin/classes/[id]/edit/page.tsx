@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { classes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 import { Button } from '@/components/ui/button';
 import { ClassForm } from '@/components/admin/ClassForm';
 import Link from 'next/link';
@@ -26,7 +26,7 @@ export default async function EditClassPage({
   const classData = await db
     .select()
     .from(classes)
-    .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id)))
+    .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
     .limit(1);
 
   if (classData.length === 0) {

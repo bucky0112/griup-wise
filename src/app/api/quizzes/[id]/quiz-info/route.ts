@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes, classes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, isNull } from 'drizzle-orm';
 
 export async function GET(
   request: NextRequest,
@@ -29,7 +29,7 @@ export async function GET(
       })
       .from(quizzes)
       .innerJoin(classes, eq(quizzes.classId, classes.id))
-      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id)))
+      .where(and(eq(quizzes.id, quizId), eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {

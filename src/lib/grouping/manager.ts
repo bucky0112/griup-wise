@@ -1,5 +1,5 @@
 import { db, groupingRuns, groups, groupMembers, participants, quizzes, submissions } from '../db';
-import { eq, and, count, desc, gt, inArray, sql } from 'drizzle-orm';
+import { eq, and, count, desc, gt, inArray, isNull, sql } from 'drizzle-orm';
 import type { GroupingConfig } from './config';
 import { validateGroupingConfig } from './config';
 import { createDeterministicRanking, generateRankingHash } from './ranking';
@@ -120,7 +120,7 @@ async function quizIdOfParticipants(participantIds: string[]): Promise<string | 
 
 // Only the admin who created a quiz may edit its groups; the owner never changes, so no lock is needed.
 async function isQuizOwnedBy(quizId: string, adminId: string): Promise<boolean> {
-  const [quiz] = await db.select({ createdBy: quizzes.createdBy }).from(quizzes).where(eq(quizzes.id, quizId)).limit(1);
+  const [quiz] = await db.select({ createdBy: quizzes.createdBy }).from(quizzes).where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt))).limit(1);
   return quiz?.createdBy === adminId;
 }
 

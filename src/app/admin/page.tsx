@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { classes, quizzes, participants } from '@/lib/db/schema';
-import { eq, count } from 'drizzle-orm';
+import { and, eq, count, isNull } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -19,16 +19,16 @@ export default async function AdminDashboard() {
     db
       .select({ count: count(classes.id) })
       .from(classes)
-      .where(eq(classes.createdBy, session.id)),
+      .where(and(eq(classes.createdBy, session.id), isNull(classes.deletedAt))),
     db
       .select({ count: count(quizzes.id) })
       .from(quizzes)
-      .where(eq(quizzes.createdBy, session.id)),
+      .where(and(eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt))),
     db
       .select({ count: count(participants.id) })
       .from(participants)
       .innerJoin(quizzes, eq(quizzes.id, participants.quizId))
-      .where(eq(quizzes.createdBy, session.id))
+      .where(and(eq(quizzes.createdBy, session.id), isNull(quizzes.deletedAt)))
   ]);
 
   const totalClasses = classesCount[0]?.count || 0;

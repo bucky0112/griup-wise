@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { participants, quizzes } from '@/lib/db/schema';
@@ -27,7 +27,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     const [quiz] = await db
       .select({ createdBy: quizzes.createdBy })
       .from(quizzes)
-      .where(eq(quizzes.id, quizId))
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (!quiz || quiz.createdBy !== session.id) {

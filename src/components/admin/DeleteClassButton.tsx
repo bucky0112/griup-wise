@@ -15,7 +15,7 @@ export function DeleteClassButton({ classId, className }: DeleteClassButtonProps
   const router = useRouter();
 
   const handleDelete = async () => {
-    if (!confirm(`確定要刪除班級「${className}」嗎？此操作無法復原。`)) {
+    if (!confirm(`確定要刪除班級「${className}」嗎？刪除後班級會從列表中移除，若需復原請聯絡系統管理者。`)) {
       return;
     }
 

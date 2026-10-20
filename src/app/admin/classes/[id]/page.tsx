@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { classes, quizzes, participants } from '@/lib/db/schema';
-import { eq, and, count } from 'drizzle-orm';
+import { eq, and, count, isNull } from 'drizzle-orm';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,7 +27,7 @@ export default async function ClassDetailPage({
   const classData = await db
     .select()
     .from(classes)
-    .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id)))
+    .where(and(eq(classes.id, classId), eq(classes.createdBy, session.id), isNull(classes.deletedAt)))
     .limit(1);
 
   if (classData.length === 0) {
@@ -45,7 +45,7 @@ export default async function ClassDetailPage({
       createdAt: quizzes.createdAt,
     })
     .from(quizzes)
-    .where(eq(quizzes.classId, classId))
+    .where(and(eq(quizzes.classId, classId), isNull(quizzes.deletedAt)))
     .orderBy(quizzes.createdAt);
 
   // Get participants count
@@ -53,7 +53,7 @@ export default async function ClassDetailPage({
     .select({ count: count(participants.id) })
     .from(participants)
     .innerJoin(quizzes, eq(quizzes.id, participants.quizId))
-    .where(eq(quizzes.classId, classId));
+    .where(and(eq(quizzes.classId, classId), isNull(quizzes.deletedAt)));
 
   const participantsCount = participantsCountResult[0]?.count || 0;
 

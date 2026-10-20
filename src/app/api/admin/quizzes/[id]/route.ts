@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { quizzes } from '@/lib/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 
 interface RouteParams {
@@ -36,7 +36,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         show_group_publicly: quizzes.showGroupPublicly,
       })
       .from(quizzes)
-      .where(eq(quizzes.id, quizId))
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
       .limit(1);
 
     if (quiz.length === 0) {
@@ -72,8 +72,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         }),
         ...(updates.is_active !== undefined && { isActive: updates.is_active }),
       })
-      .where(eq(quizzes.id, quizId))
+      // Re-check deleted_at in the update itself so a concurrent DELETE cannot be undone by re-activation
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
       .returning();
+
+    if (updatedQuiz.length === 0) {
+      return NextResponse.json(
+        { message: '測驗不存在' },
+        { status: 404 }
+      );
+    }
 
     return NextResponse.json({
       message: '測驗設定更新成功',
@@ -100,6 +108,49 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(
       { message: '更新測驗失敗' },
+      { status: 500 }
+    );
+  }
+}
+
+// Soft delete: the quiz and its submissions stay in the database; deactivating it makes the
+// student login, assignment and submit routes refuse it through their existing is_active check.
+export async function DELETE(_request: NextRequest, { params }: RouteParams) {
+  const { id: quizId } = await params;
+  try {
+    const session = await getSession();
+
+    if (!session || session.type !== 'admin') {
+      return NextResponse.json(
+        { message: '未授權，請重新登入' },
+        { status: 401 }
+      );
+    }
+
+    const [quiz] = await db
+      .select({ createdBy: quizzes.createdBy })
+      .from(quizzes)
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)))
+      .limit(1);
+
+    if (!quiz) {
+      return NextResponse.json({ message: '測驗不存在' }, { status: 404 });
+    }
+
+    if (quiz.createdBy !== session.id) {
+      return NextResponse.json({ message: '無權限修改此測驗' }, { status: 403 });
+    }
+
+    await db
+      .update(quizzes)
+      .set({ deletedAt: new Date(), isActive: false })
+      .where(and(eq(quizzes.id, quizId), isNull(quizzes.deletedAt)));
+
+    return NextResponse.json({ message: '測驗已刪除' });
+  } catch (error) {
+    console.error('Error deleting quiz:', error);
+    return NextResponse.json(
+      { message: '刪除測驗失敗' },
       { status: 500 }
     );
   }
