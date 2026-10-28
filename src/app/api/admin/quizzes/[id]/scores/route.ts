@@ -122,6 +122,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Get all submissions with scores
     const submissionData = await db
       .select({
+        id: submissions.id,
         participant_id: submissions.participantId,
         total_score: submissions.totalScore,
         submitted_at: submissions.submittedAt,
@@ -170,7 +171,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         rank: null as number | null, // Will be calculated below
         answers_detail: submission ?
           quizQuestions.map(question => {
-            const answer = answersMap.get(submission.participant_id)?.find(a => a.question_id === question.id);
+            const answer = answersMap.get(submission.id)?.find(a => a.question_id === question.id);
             return {
               question_id: question.id,
               earned_score: answer ? parseFloat(answer.earned_score) : 0,
