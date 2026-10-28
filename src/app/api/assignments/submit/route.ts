@@ -2,15 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSession } from '@/lib/session';
 import { db } from '@/lib/db';
 import { questions, submissions, answers, quizzes } from '@/lib/db/schema';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { calculateScore } from '@/lib/scoring';
+import { isAnswered } from '@/lib/answered';
 import { groupingManager } from '@/lib/grouping/manager';
 import { defaultConfigs } from '@/lib/grouping/config';
 
 const submitAnswerSchema = z.object({
   answers: z.record(z.string(), z.unknown()) // questionId -> answer
 });
+
+// drizzle sends a JS null as SQL NULL, which answers.response (jsonb NOT NULL) rejects
+const UNANSWERED_RESPONSE = sql`'null'::jsonb`;
 
 
 export async function POST(request: NextRequest) {
@@ -74,22 +78,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate that all questions have answers
-    const missingAnswers = quizQuestions.filter(q => !(q.id in studentAnswers));
-    if (missingAnswers.length > 0) {
-      return NextResponse.json(
-        {
-          message: '請完成所有題目後再提交',
-          missingQuestions: missingAnswers.length
-        },
-        { status: 400 }
-      );
-    }
-
     // Calculate scores for each question
     const scoredAnswers = quizQuestions.map(question => {
       const studentAnswer = studentAnswers[question.id];
       const maxScore = parseFloat(question.score);
+
+      // Unanswered questions score 0 and never go to manual review
+      if (!isAnswered(question.type, studentAnswer)) {
+        return {
+          questionId: question.id,
+          response: UNANSWERED_RESPONSE,
+          earnedScore: '0',
+          reviewStatus: 'auto' as const
+        };
+      }
 
       // Handle manual review questions
       if (question.type === 'short_text') {
