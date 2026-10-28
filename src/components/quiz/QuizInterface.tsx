@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import QuestionCard from './QuestionCard';
+import { isAnswered } from '@/lib/answered';
 
 export interface Question {
   id: string;
@@ -50,32 +51,9 @@ export default function QuizInterface({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
-  // Check if all questions are answered (using consistent logic)
-  const isQuestionAnswered = (question: Question): boolean => {
-    const answer = answers[question.id];
-
-    // For boolean questions, false is a valid answer
-    if (question.type === 'boolean') {
-      return answer !== undefined && answer !== null;
-    }
-
-    // For numeric questions, 0 is a valid answer
-    if (question.type === 'numeric') {
-      return answer !== undefined && answer !== null && answer !== '';
-    }
-
-    // For multiple choice, non-empty array means answered
-    if (question.type === 'multiple') {
-      return Array.isArray(answer) && answer.length > 0;
-    }
-
-    // For single choice and text, non-empty string means answered
-    return answer !== undefined && answer !== null && answer !== '';
-  };
-
   // Calculate progress (considering question types)
-  const answeredQuestions = questions.filter(isQuestionAnswered);
-  const allQuestionsAnswered = answeredQuestions.length === questions.length;
+  const answeredQuestions = questions.filter(question => isAnswered(question.type, answers[question.id]));
+  const unansweredCount = questions.length - answeredQuestions.length;
   const progressPercentage = (answeredQuestions.length / questions.length) * 100;
 
   // Generate secure localStorage key based on quiz and participant
@@ -158,39 +136,12 @@ export default function QuizInterface({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [hasChanges, isSubmitting]);
 
-  // Validate all questions are answered
-  const validateAnswers = (): boolean => {
-    const missingAnswers = questions.filter(question => !isQuestionAnswered(question));
-
-    if (missingAnswers.length > 0) {
-      toast.error(`請完成所有題目後再提交，還有 ${missingAnswers.length} 題未作答`);
-
-      // Scroll to first unanswered question
-      const firstMissingId = missingAnswers[0].id;
-      const element = document.getElementById(`question-${firstMissingId}`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      }
-
-      return false;
-    }
-
-    return true;
-  };
-
   // Handle submission
   const handleSubmit = async () => {
-    if (!validateAnswers()) return;
-
-    // Double check all questions are answered before final confirmation
-    if (!allQuestionsAnswered) {
-      toast.error('請完成所有題目後再提交');
-      return;
-    }
-
     const confirmed = window.confirm(
       `確定要提交測驗答案嗎？\n\n` +
       `已完成題目：${answeredQuestions.length}/${questions.length}\n` +
+      (unansweredCount > 0 ? `還有 ${unansweredCount} 題未作答，未作答題目以 0 分計\n` : '') +
       `總配分：${quiz.totalScore} 分\n` +
       `注意：提交後將無法修改答案。`
     );
@@ -277,20 +228,20 @@ export default function QuizInterface({
               <p className="text-lg font-medium mb-2">
                 已完成 {answeredQuestions.length}/{questions.length} 題
               </p>
-              {allQuestionsAnswered ? (
+              {unansweredCount === 0 ? (
                 <p className="text-sm text-green-600 font-medium">
                   ✓ 所有題目已完成，請檢查您的答案後點擊提交按鈕
                 </p>
               ) : (
                 <p className="text-sm text-amber-600 font-medium">
-                  ⚠ 請完成所有題目後才能提交答案
+                  ⚠ 還有 {unansweredCount} 題未作答，仍可提交
                 </p>
               )}
             </div>
 
             <Button
               onClick={handleSubmit}
-              disabled={isSubmitting || !allQuestionsAnswered}
+              disabled={isSubmitting}
               className="w-full max-w-md"
               size="lg"
             >

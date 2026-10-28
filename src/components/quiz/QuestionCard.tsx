@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { CodeBlock } from '@/components/ui/code-block';
 import { CodeEditor } from '@/components/ui/code-editor';
 import { Question } from './QuizInterface';
+import { isAnswered } from '@/lib/answered';
 
 interface QuestionCardProps {
   question: Question;
@@ -189,27 +190,10 @@ export default function QuestionCard({
     }
   };
 
-  const isAnswered = () => {
-    if (question.type === 'boolean') {
-      return value !== undefined && value !== null && value !== '';
-    }
-    if (question.type === 'multiple') {
-      return Array.isArray(value) && value.length > 0;
-    }
-    if (question.type === 'short_text') {
-      // Handle structured responses
-      if (value && typeof value === 'object' && (value as { content: string }).content) {
-        return (value as { content: string }).content.trim() !== '';
-      }
-      return typeof value === 'string' && value.trim() !== '';
-    }
-    return value !== undefined && value !== null && value !== '';
-  };
-
   return (
     <Card
       id={`question-${question.id}`}
-      className={`transition-colors ${isAnswered() ? 'border-green-200 bg-green-50/30' : ''}`}
+      className={`transition-colors ${isAnswered(question.type, value) ? 'border-green-200 bg-green-50/30' : ''}`}
     >
       <CardHeader className="pb-4">
         <CardTitle className="flex items-center justify-between text-base">
@@ -219,7 +203,7 @@ export default function QuestionCard({
               ({getQuestionTypeLabel()}, {question.score} 分)
             </span>
           </span>
-          {isAnswered() && (
+          {isAnswered(question.type, value) && (
             <span className="text-green-600 text-sm font-normal">✓ 已作答</span>
           )}
         </CardTitle>
